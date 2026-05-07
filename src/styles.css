@@ -46,8 +46,47 @@ a,
 
 /* Pad top so traffic lights don't overlap content */
 body.with-sidebar { padding-top: 0; }
-body.with-sidebar .main { padding-top: 44px; }
-body.with-sidebar .sidebar { padding-top: 14px; }
+body.with-sidebar .main { padding-top: 8px; }
+body.with-sidebar .sidebar { padding-top: 8px; }
+
+/* Top bar — spans full width above sidebar+main */
+.topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px 0 88px; /* 88px clears macOS traffic lights */
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+  -webkit-app-region: drag;
+}
+.topbar-left, .topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+.topbar-btn {
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: 120ms;
+  -webkit-app-region: no-drag;
+}
+.topbar-btn:hover { background: var(--row-hover); color: var(--text); }
+.topbar-btn svg { display: block; }
+
+body.with-sidebar { padding-top: 44px; } /* push grid below topbar */
+body.with-sidebar.sidebar-collapsed { grid-template-columns: 0 1fr; }
+body.with-sidebar.sidebar-collapsed .sidebar { display: none; }
 
 :root {
   --bg: #f7f6f3;
@@ -120,10 +159,12 @@ a:hover { text-decoration: underline; }
   align-items: center;
   padding: 14px 0 14px 0;
   gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
   -webkit-app-region: drag;
   position: sticky;
   top: 0;
-  height: 100vh;
+  height: calc(100vh - 44px);
   align-self: start;
   z-index: 5;
 }

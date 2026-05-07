@@ -1,0 +1,363 @@
+/* ==========================================================================
+   polish-hero.css
+   Visual refinement for topbar, sidebar, and hero card.
+   Loaded AFTER styles.css so these rules win.
+   No layout changes — purely cosmetic polish.
+   ========================================================================== */
+
+/* ---- Shared easing token for premium motion -------------------------------*/
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-fast: 160ms;
+  --t-base: 200ms;
+  --t-slow: 280ms;
+
+  --hero-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 0 0 1px rgba(182, 155, 255, 0.08),
+    0 14px 40px -12px rgba(10, 6, 30, 0.55),
+    0 4px 14px -4px rgba(40, 22, 90, 0.45);
+}
+
+/* ---- Universal polish: focus rings & smoother transitions -----------------*/
+button:focus-visible,
+.nav-btn:focus-visible,
+.topbar-btn:focus-visible,
+.pill-btn:focus-visible,
+.icon-btn:focus-visible,
+.hero-collapse:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* Soften every interactive transition globally without breaking specifics */
+.topbar-btn,
+.nav-btn,
+.hero-collapse,
+.hero-card .pill-btn,
+.icon-btn {
+  transition:
+    background-color var(--t-base) var(--ease-out),
+    color var(--t-base) var(--ease-out),
+    border-color var(--t-base) var(--ease-out),
+    box-shadow var(--t-base) var(--ease-out),
+    transform var(--t-base) var(--ease-out),
+    filter var(--t-base) var(--ease-out);
+}
+
+/* ===========================================================================
+   TOPBAR
+   ========================================================================= */
+.topbar {
+  /* Crisper bottom edge: hairline + faint inner highlight */
+  border-bottom: 1px solid transparent;
+  background:
+    linear-gradient(var(--bg), var(--bg)) padding-box,
+    linear-gradient(180deg, transparent 0%, var(--border) 100%) border-box;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+  backdrop-filter: saturate(140%);
+  -webkit-backdrop-filter: saturate(140%);
+}
+
+.topbar-btn {
+  border-radius: 9px;
+  position: relative;
+}
+
+.topbar-btn:hover {
+  background: var(--row-hover);
+  color: var(--text);
+  transform: translateY(-0.5px);
+}
+
+.topbar-btn:active {
+  transform: translateY(0);
+  filter: brightness(0.96);
+}
+
+/* Unread bell dot — first .topbar-btn carries the bell */
+.topbar-right .topbar-btn[title="Notifications"]::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 8px rgba(182, 155, 255, 0.55);
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+/* ===========================================================================
+   SIDEBAR
+   ========================================================================= */
+.sidebar {
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--panel) 92%, transparent) 0%,
+      var(--bg) 100%);
+  border-right: 1px solid var(--border);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.02);
+}
+
+.nav-btn {
+  position: relative;
+  border-radius: 11px;
+  /* Slight pad-around so the icon glow has room */
+  width: 38px;
+  height: 38px;
+}
+
+.nav-btn:hover {
+  background: var(--row-hover);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.nav-btn:active {
+  transform: translateY(0);
+}
+
+/* Active state — soft gradient fill + accent ring + indicator bar */
+.nav-btn.active {
+  background:
+    radial-gradient(120% 120% at 30% 20%,
+      color-mix(in srgb, var(--accent) 22%, transparent) 0%,
+      color-mix(in srgb, var(--accent) 8%, transparent) 60%,
+      transparent 100%),
+    var(--accent-bg);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 6px 18px -8px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+/* Vertical indicator on active nav item (left edge of sidebar) */
+.nav-btn.active::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* Subtle icon glow when active */
+.nav-btn.active svg {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent));
+}
+
+.nav-btn svg {
+  transition: filter var(--t-base) var(--ease-out),
+              transform var(--t-base) var(--ease-out);
+}
+
+.nav-btn:hover svg {
+  transform: scale(1.06);
+}
+
+/* ===========================================================================
+   HERO CARD
+   ========================================================================= */
+.hero-card {
+  /* Deeper, more cinematic gradient — adds a third stop & richer purple core */
+  background:
+    radial-gradient(140% 120% at 100% 0%,
+      rgba(182, 155, 255, 0.22) 0%,
+      rgba(182, 155, 255, 0.04) 38%,
+      transparent 60%),
+    radial-gradient(100% 80% at 0% 100%,
+      rgba(94, 47, 134, 0.28) 0%,
+      transparent 55%),
+    linear-gradient(135deg, #14101f 0%, #1d1830 45%, #2e2454 100%);
+  border: 1px solid rgba(182, 155, 255, 0.14);
+  border-radius: 16px;
+  padding: 26px 28px;
+  box-shadow: var(--hero-shadow);
+  /* Inner glow */
+  position: relative;
+  isolation: isolate;
+}
+
+.hero-card::after {
+  /* Soft inner highlight (top edge) — premium glass feel */
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.06) 0%,
+      transparent 22%);
+  z-index: 0;
+}
+
+.hero-card > *:not(.hero-collapse) { position: relative; z-index: 1; }
+.hero-card > .hero-collapse { position: absolute !important; top: 12px; right: 12px; z-index: 2; }
+
+.hero-card h2 {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.45px;
+  line-height: 1.25;
+  margin-bottom: 8px;
+  color: #f4f0ff;
+}
+
+.hero-card h2 em {
+  font-style: italic;
+  font-family: "Times New Roman", Georgia, serif;
+  font-weight: 500;
+  color: #e8defb;
+  background: linear-gradient(90deg, #ffffff 0%, #d8c8ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hero-card p {
+  color: rgba(216, 210, 238, 0.78);
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 540px;
+  letter-spacing: 0.05px;
+}
+
+.hero-card .actions {
+  margin-top: 20px;
+  gap: 12px;
+}
+
+/* "Start recording" pill — refined padding, weight, and hover lift */
+.hero-card .pill-btn {
+  padding: 11px 22px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  min-width: 172px;
+  background: #ffffff;
+  color: #1a1330;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 6px 16px -6px rgba(0, 0, 0, 0.45),
+    0 2px 4px rgba(0, 0, 0, 0.18);
+}
+
+.hero-card .pill-btn:hover {
+  transform: translateY(-1.5px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 12px 28px -8px rgba(0, 0, 0, 0.55),
+    0 3px 8px rgba(0, 0, 0, 0.22);
+}
+
+.hero-card .pill-btn:active {
+  transform: translateY(0);
+  filter: brightness(0.97);
+}
+
+.hero-card .pill-btn.ghost {
+  background: rgba(255, 255, 255, 0.04);
+  color: #e8defb;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: none;
+}
+
+.hero-card .pill-btn.ghost:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  transform: translateY(-1px);
+}
+
+/* Kbd hints row — refined chip style */
+.hero-card .kbd-hints {
+  margin-left: 4px;
+  color: rgba(216, 210, 238, 0.7) !important;
+  font-size: 12px !important;
+  gap: 7px !important;
+}
+
+.hero-card .kbd-hints .kbd {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  color: #f0eaff !important;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0.2px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: background-color var(--t-fast) var(--ease-out),
+              border-color var(--t-fast) var(--ease-out);
+}
+
+.hero-card .kbd-hints .kbd:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+/* Hero collapse button — refined */
+.hero-collapse {
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.hero-collapse:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.20);
+  transform: translateY(-0.5px);
+}
+
+.hero-collapse:active { transform: translateY(0); }
+
+.hero-collapse svg {
+  transition: transform var(--t-slow) var(--ease-out);
+}
+
+/* Compact hero refinements — tighter look when collapsed */
+.hero-card.compact {
+  padding: 12px 14px 12px 20px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 6px 18px -10px rgba(10, 6, 30, 0.5);
+}
+
+/* Light-mode adjustments for hero (kept subtle — hero stays dark by design) */
+@media (prefers-color-scheme: light) {
+  .topbar-right .topbar-btn[title="Notifications"]::after {
+    box-shadow:
+      0 0 0 2px var(--bg),
+      0 0 6px rgba(107, 78, 240, 0.45);
+  }
+  .nav-btn.active::before {
+    box-shadow: 0 0 8px rgba(107, 78, 240, 0.45);
+  }
+}

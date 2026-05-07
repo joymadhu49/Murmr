@@ -6,14 +6,31 @@
     <title>MyVoice</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles/drag-fix.css" />
+    <link rel="stylesheet" href="styles/polish-hero.css" />
+    <link rel="stylesheet" href="styles/polish-history.css" />
+    <link rel="stylesheet" href="styles/polish-settings.css" />
     <script type="module" src="/main.js" defer></script>
   </head>
   <body class="with-sidebar">
-    <aside class="sidebar">
-      <div class="sidebar-logo" title="MyVoice">
-        <img src="assets/logo.svg" alt="MyVoice" />
+    <header class="topbar" data-tauri-drag-region>
+      <div class="topbar-left" data-tauri-drag-region></div>
+      <div class="topbar-right">
+        <button class="topbar-btn" title="Notifications" aria-label="Notifications">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+          </svg>
+        </button>
+        <button class="topbar-btn account" id="topbar-settings" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M4 21a8 8 0 0 1 16 0"/>
+          </svg>
+        </button>
       </div>
-      <div class="sidebar-divider"></div>
+    </header>
+    <aside class="sidebar" data-tauri-drag-region>
       <button class="nav-btn active" data-tab="home" title="Home">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
       </button>
@@ -29,7 +46,7 @@
       </button>
     </aside>
 
-    <main class="main">
+    <main class="main" data-tauri-drag-region>
       <div class="col">
 
         <div id="home-tab">

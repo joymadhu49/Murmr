@@ -1,5 +1,33 @@
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
+const tauriWindow = window.__TAURI__?.window;
+
+// JS drag fallback — invokes startDragging on mousedown over drag regions.
+// Tauri 2's data-tauri-drag-region works natively for most elements but
+// can fail with sticky/fixed positioning on macOS. This catches stragglers.
+document.addEventListener("mousedown", async (e) => {
+  if (e.button !== 0) return;
+  const target = e.target;
+  if (!(target instanceof Element)) return;
+  // Skip if click was on or inside an interactive element
+  if (target.closest("button, input, select, textarea, a, .icon-btn, .nav-btn, .topbar-btn, .pill-btn, .hero-collapse, .transcript, [contenteditable]")) {
+    return;
+  }
+  // Only drag from elements marked as drag regions (or topbar/sidebar/main)
+  const dragRoot = target.closest("[data-tauri-drag-region], .topbar, .sidebar, .main, .hero-card, .card, .panel");
+  if (!dragRoot) return;
+  // Don't drag from selectable text content
+  if (target.closest(".history-row .text, #profile-words, h1, h2, h3, h4, p")) {
+    if (window.getSelection().toString()) return;
+  }
+  try {
+    if (tauriWindow?.getCurrentWindow) {
+      await tauriWindow.getCurrentWindow().startDragging();
+    }
+  } catch (err) {
+    // ignore
+  }
+});
 
 let recording = false;
 let btn, status, providerInfo;
@@ -407,6 +435,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   document.querySelectorAll(".nav-btn[data-tab]").forEach((b) => {
     b.addEventListener("click", () => setTab(b.dataset.tab));
   });
+
+  const topbarSettings = document.getElementById("topbar-settings");
+  if (topbarSettings) {
+    topbarSettings.addEventListener("click", () => setTab("settings"));
+  }
 
   langEl.addEventListener("change", saveBehavior);
   autoPasteEl.addEventListener("change", saveBehavior);

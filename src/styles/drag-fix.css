@@ -1,0 +1,98 @@
+/* ============================================================
+   drag-fix.css — robust window drag for Tauri 2 macOS Overlay
+   ============================================================ */
+
+body.with-sidebar,
+body.with-sidebar .topbar,
+body.with-sidebar .topbar-left,
+body.with-sidebar .topbar-right,
+body.with-sidebar .sidebar,
+body.with-sidebar .main,
+body.with-sidebar .col,
+body.with-sidebar .welcome,
+body.with-sidebar #home-tab,
+body.with-sidebar #stats-tab,
+body.with-sidebar #profile-tab,
+body.with-sidebar #settings-tab,
+body.with-sidebar #right-col,
+body.with-sidebar .card,
+body.with-sidebar .panel,
+body.with-sidebar .hero-card,
+body.with-sidebar .stats-card,
+body.with-sidebar .profile-card,
+body.with-sidebar .section-label,
+body.with-sidebar .empty,
+body.with-sidebar .stat,
+body.with-sidebar .field,
+body.with-sidebar .row,
+body.with-sidebar .progress,
+body.with-sidebar .model,
+body.with-sidebar .model-list,
+body.with-sidebar .model-head,
+body.with-sidebar .model-meta,
+body.with-sidebar .model-title,
+body.with-sidebar .history-list,
+body.with-sidebar .history-row,
+body.with-sidebar .stat .label,
+body.with-sidebar .hotkey-row,
+body.with-sidebar h1,
+body.with-sidebar h2,
+body.with-sidebar h3,
+body.with-sidebar h4,
+body.with-sidebar p,
+body.with-sidebar label {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+body.with-sidebar button,
+body.with-sidebar input,
+body.with-sidebar select,
+body.with-sidebar textarea,
+body.with-sidebar a,
+body.with-sidebar .icon-btn,
+body.with-sidebar .nav-btn,
+body.with-sidebar .pill-btn,
+body.with-sidebar .topbar-btn,
+body.with-sidebar .hero-collapse,
+body.with-sidebar .btn,
+body.with-sidebar .transcript,
+body.with-sidebar #profile-words,
+body.with-sidebar .history-row .text,
+body.with-sidebar .history-row .actions,
+body.with-sidebar .stat .value,
+body.with-sidebar [contenteditable],
+body.with-sidebar [data-no-drag] {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+  pointer-events: auto;
+}
+
+.topbar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 80px;
+  height: 100%;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.topbar {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+}
+
+.sidebar .nav-btn,
+.sidebar button {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+  position: relative;
+  z-index: 2;
+}
