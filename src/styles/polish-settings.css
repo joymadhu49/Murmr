@@ -225,3 +225,165 @@
   border-color: rgba(255, 90, 90, 0.5);
   color: #ffb0b0;
 }
+
+/* ============================================================
+   Voice profile tab — compact single-screen layout
+   ============================================================ */
+
+#profile-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
+  min-height: 0;
+}
+#profile-tab > .profile-hero { padding: 16px 18px; flex-shrink: 0; }
+#profile-tab > .profile-grid { flex: 1 1 auto; min-height: 0; }
+
+.profile-hero {
+  background: linear-gradient(135deg, rgba(123, 95, 215, 0.12), rgba(60, 45, 110, 0.05));
+  border: 1px solid var(--border);
+}
+.profile-hero h3 {
+  font-size: 16px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+  margin: 0 0 4px 0;
+}
+.profile-hero p { margin: 0; }
+
+.profile-hero-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.profile-hero-title { flex: 1; min-width: 220px; }
+.profile-mode-badge {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  min-width: 180px;
+}
+.profile-mode-badge select { font-weight: 600; min-width: 180px; }
+
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+.profile-stat {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.profile-stat .value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
+}
+.profile-stat .small { font-size: 10px; letter-spacing: 0.7px; }
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+  gap: 14px;
+  align-items: stretch;
+  min-height: 0;
+}
+.profile-prompt-card {
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.profile-prompt-card h3 { margin-bottom: 10px; flex: 0 0 auto; }
+.profile-prompt-card .prompt-preview { flex: 1 1 auto; min-height: 0; }
+
+.profile-side {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 14px;
+  min-height: 0;
+}
+.profile-side .card { padding: 12px 16px; display: flex; flex-direction: column; min-height: 0; }
+.profile-side .card h3 { margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: 0 0 auto; }
+.profile-side .prompt-preview,
+.profile-side .chip-row { flex: 1 1 auto; min-height: 0; }
+
+.profile-edit-link {
+  font-size: 10.5px;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.profile-edit-link:hover { text-decoration: underline; }
+
+.prompt-preview {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.prompt-preview.small { font-size: 11.5px; line-height: 1.5; }
+
+.chip-row {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  line-height: 1.9;
+  padding-right: 4px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.vocab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11.5px;
+  color: var(--text);
+  margin: 2px 3px 2px 0;
+  font-family: ui-monospace, Menlo, monospace;
+  white-space: nowrap;
+}
+.vocab-chip .muted { font-size: 10.5px; opacity: 0.65; }
+
+@media (max-width: 760px) {
+  .profile-grid { grid-template-columns: 1fr; }
+  .profile-stats { grid-template-columns: repeat(2, 1fr); }
+  .profile-prompt-card .prompt-preview,
+  .profile-side .prompt-preview,
+  .profile-side .chip-row { max-height: 180px; }
+}
+
+/* Fix: main content overlapped by fixed 44px topbar */
+.main { padding-top: 52px !important; padding-bottom: 16px !important; }

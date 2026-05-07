@@ -171,7 +171,13 @@ input[type="search"]:focus {
 
 /* Count chip */
 #history-count {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
 }

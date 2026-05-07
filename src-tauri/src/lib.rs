@@ -70,6 +70,13 @@ const MODELS: &[ModelInfo] = &[
     },
 ];
 
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+struct CustomMode {
+    id: String,
+    name: String,
+    terms: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct AppSettings {
     active_model: String,
@@ -81,6 +88,12 @@ struct AppSettings {
     groq_api_key: String,
     #[serde(default = "default_groq_model")]
     groq_model: String, // e.g. "whisper-large-v3-turbo"
+    #[serde(default)]
+    custom_vocab: String,
+    #[serde(default = "default_active_mode")]
+    active_mode: String, // built-in id or custom id
+    #[serde(default)]
+    custom_modes: Vec<CustomMode>,
 }
 
 fn default_provider() -> String {
@@ -88,6 +101,9 @@ fn default_provider() -> String {
 }
 fn default_groq_model() -> String {
     "whisper-large-v3-turbo".into()
+}
+fn default_active_mode() -> String {
+    "notes".into()
 }
 
 impl Default for AppSettings {
@@ -99,9 +115,41 @@ impl Default for AppSettings {
             provider: default_provider(),
             groq_api_key: String::new(),
             groq_model: default_groq_model(),
+            custom_vocab: String::new(),
+            active_mode: default_active_mode(),
+            custom_modes: Vec::new(),
         }
     }
 }
+
+struct BuiltinMode {
+    id: &'static str,
+    name: &'static str,
+    pack: &'static str,
+}
+
+const BUILTIN_MODES: &[BuiltinMode] = &[
+    BuiltinMode {
+        id: "notes",
+        name: "Notes / general",
+        pack: "",
+    },
+    BuiltinMode {
+        id: "ai_prompt",
+        name: "AI prompt",
+        pack: "Common terms: prompt, agent, LLM, model, GPT, Claude, tool call, function call, system prompt, refactor, debug, JSON, API. Phrases: write a function, fix the bug, give me an example, explain this code.",
+    },
+    BuiltinMode {
+        id: "email",
+        name: "Email",
+        pack: "Common terms: regards, sincerely, hello, dear, thanks, please find attached, forward, follow up, schedule, meeting. Phrases: best regards, looking forward, please let me know, thank you for your email.",
+    },
+    BuiltinMode {
+        id: "code",
+        name: "Code / tech",
+        pack: "Common terms: function, variable, async, await, const, let, return, import, export, npm, GitHub, commit, branch, pull request, refactor, TypeScript, JavaScript, Rust, Python, JSON, API, endpoint, callback, promise.",
+    },
+];
 
 const GROQ_MODELS: &[&str] = &[
     "whisper-large-v3-turbo",
@@ -225,37 +273,281 @@ fn compute_streak(items: &[HistoryEntry]) -> u32 {
     streak
 }
 
-fn voice_profile_prompt() -> String {
+const PROMPT_BUDGET: usize = 880;
+const STOPWORDS: &[&str] = &[
+    "the", "and", "for", "you", "that", "this", "with", "have", "are", "was", "but", "not",
+    "from", "they", "has", "had", "were", "what", "when", "your", "all", "would", "there",
+    "their", "can", "will", "just", "like", "get", "got", "one", "out", "about", "into", "some",
+    "more", "than", "then", "him", "her", "his", "she", "them", "now", "any", "been", "being",
+    "also", "very", "much", "make", "made", "going", "want", "need", "know", "think", "thing",
+    "things", "really", "actually", "okay",
+];
+
+fn is_stopword(lower: &str) -> bool {
+    STOPWORDS.iter().any(|s| *s == lower)
+}
+
+fn tokenize(text: &str) -> Vec<&str> {
+    text.split(|c: char| !c.is_alphanumeric() && c != '\'')
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
+fn append_term(out: &mut String, term: &str, budget: usize) -> bool {
+    let extra = if out.is_empty() || out.ends_with(' ') || out.ends_with(':') {
+        term.len()
+    } else {
+        term.len() + 2
+    };
+    if out.len() + extra > budget {
+        return false;
+    }
+    if !(out.is_empty() || out.ends_with(' ') || out.ends_with(':')) {
+        out.push_str(", ");
+    }
+    out.push_str(term);
+    true
+}
+
+fn finish_section(out: &mut String) {
+    let trimmed = out.trim_end_matches(", ").trim_end_matches(':').to_string();
+    *out = trimmed;
+    if !out.is_empty() && !out.ends_with('.') {
+        out.push('.');
+    }
+}
+
+fn mode_pack(settings: &AppSettings) -> String {
+    let id = settings.active_mode.as_str();
+    if let Some(m) = BUILTIN_MODES.iter().find(|m| m.id == id) {
+        return m.pack.to_string();
+    }
+    if let Some(cm) = settings.custom_modes.iter().find(|m| m.id == id) {
+        let lines: Vec<&str> = cm
+            .terms
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
+        if lines.is_empty() {
+            return String::new();
+        }
+        return format!("Common terms: {}.", lines.join(", "));
+    }
+    String::new()
+}
+
+fn voice_profile_prompt(settings: &AppSettings) -> String {
+    let mut out = String::new();
+
+    let pack = mode_pack(settings);
+    if !pack.is_empty() {
+        if out.len() + pack.len() + 1 <= PROMPT_BUDGET {
+            out.push_str(&pack);
+            if !out.ends_with(' ') {
+                out.push(' ');
+            }
+        }
+    }
+
+    let custom: Vec<String> = settings
+        .custom_vocab
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if !custom.is_empty() {
+        let prefix = "Vocabulary: ";
+        if out.len() + prefix.len() + 4 <= PROMPT_BUDGET {
+            out.push_str(prefix);
+            for term in &custom {
+                if !append_term(&mut out, term, PROMPT_BUDGET) {
+                    break;
+                }
+            }
+            finish_section(&mut out);
+            if !out.ends_with(' ') {
+                out.push(' ');
+            }
+        }
+    }
+
     let items = read_history_all();
-    if items.len() < 3 {
+    if items.len() >= 3 {
+        let mut word_counts: HashMap<String, u32> = HashMap::new();
+        let mut casing: HashMap<String, String> = HashMap::new();
+        let mut name_counts: HashMap<String, u32> = HashMap::new();
+        let mut bigram_counts: HashMap<String, u32> = HashMap::new();
+
+        for e in items.iter().rev().take(300) {
+            let tokens = tokenize(&e.text);
+            for (i, w) in tokens.iter().enumerate() {
+                let lower = w.to_lowercase();
+                let is_acronym =
+                    w.len() >= 2 && w.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit());
+                let is_capitalized = w
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_uppercase())
+                    .unwrap_or(false)
+                    && !is_acronym;
+
+                if (w.len() >= 4 || is_acronym) && !is_stopword(&lower) {
+                    *word_counts.entry(lower.clone()).or_insert(0) += 1;
+                    let prefer = casing.entry(lower.clone()).or_insert_with(|| (*w).to_string());
+                    let cur_score = casing_score(prefer);
+                    let new_score = casing_score(w);
+                    if new_score > cur_score {
+                        *prefer = (*w).to_string();
+                    }
+                }
+
+                if is_capitalized && i > 0 && w.len() >= 3 && !is_stopword(&lower) {
+                    *name_counts.entry((*w).to_string()).or_insert(0) += 1;
+                }
+
+                if let Some(next) = tokens.get(i + 1) {
+                    let nlow = next.to_lowercase();
+                    if w.len() >= 3
+                        && next.len() >= 3
+                        && !is_stopword(&lower)
+                        && !is_stopword(&nlow)
+                    {
+                        let bg = format!("{} {}", lower, nlow);
+                        *bigram_counts.entry(bg).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+
+        let mut names: Vec<(String, u32)> = name_counts.into_iter().collect();
+        names.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let names: Vec<String> = names.into_iter().take(20).map(|(w, _)| w).collect();
+
+        let mut bigrams: Vec<(String, u32)> = bigram_counts
+            .into_iter()
+            .filter(|(_, c)| *c >= 2)
+            .collect();
+        bigrams.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let bigrams: Vec<String> = bigrams.into_iter().take(15).map(|(w, _)| w).collect();
+
+        let mut words: Vec<(String, u32)> = word_counts.into_iter().collect();
+        words.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let words: Vec<String> = words
+            .into_iter()
+            .take(100)
+            .map(|(k, _)| casing.get(&k).cloned().unwrap_or(k))
+            .collect();
+
+        if !words.is_empty() && out.len() + 16 < PROMPT_BUDGET {
+            out.push_str("Common terms: ");
+            for w in &words {
+                if !append_term(&mut out, w, PROMPT_BUDGET) {
+                    break;
+                }
+            }
+            finish_section(&mut out);
+            if !out.ends_with(' ') {
+                out.push(' ');
+            }
+        }
+
+        if !names.is_empty() && out.len() + 9 < PROMPT_BUDGET {
+            out.push_str("Names: ");
+            for n in &names {
+                if !append_term(&mut out, n, PROMPT_BUDGET) {
+                    break;
+                }
+            }
+            finish_section(&mut out);
+            if !out.ends_with(' ') {
+                out.push(' ');
+            }
+        }
+
+        if !bigrams.is_empty() && out.len() + 19 < PROMPT_BUDGET {
+            out.push_str("Frequent phrases: ");
+            for b in &bigrams {
+                if !append_term(&mut out, b, PROMPT_BUDGET) {
+                    break;
+                }
+            }
+            finish_section(&mut out);
+        }
+    }
+
+    out.trim().to_string()
+}
+
+const HALLUCINATION_EXACT: &[&str] = &[
+    "thanks for watching",
+    "thank you for watching",
+    "thank you",
+    "you",
+    "please subscribe",
+    "[blank_audio]",
+    "(music)",
+    "(silence)",
+    "[music]",
+    "[no audio]",
+    "[silence]",
+];
+
+fn normalize_for_match(s: &str) -> String {
+    s.trim()
+        .trim_matches(|c: char| matches!(c, '.' | '!' | '?' | ',' | ' ' | '"' | '\''))
+        .to_lowercase()
+}
+
+fn is_hallucination_phrase(s: &str) -> bool {
+    let n = normalize_for_match(s);
+    if n.is_empty() {
+        return true;
+    }
+    if HALLUCINATION_EXACT.iter().any(|h| *h == n) {
+        return true;
+    }
+    if n.starts_with("subtitles by")
+        || n.starts_with("subtitles ")
+        || n.starts_with("captions by")
+    {
+        return true;
+    }
+    false
+}
+
+fn filter_hallucinations(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
         return String::new();
     }
-    let mut counts: HashMap<String, u32> = HashMap::new();
-    for e in items.iter().rev().take(300) {
-        for w in e
-            .text
-            .split(|c: char| !c.is_alphanumeric() && c != '\'')
-        {
-            let w = w.trim().to_lowercase();
-            if w.len() < 4 {
-                continue;
-            }
-            *counts.entry(w).or_insert(0) += 1;
-        }
+    if is_hallucination_phrase(trimmed) {
+        return String::new();
     }
-    let mut v: Vec<_> = counts.into_iter().collect();
-    v.sort_by(|a, b| b.1.cmp(&a.1));
-    let mut out = String::new();
-    for (w, _) in v.iter().take(80) {
-        if out.len() + w.len() + 2 > 220 {
-            break;
-        }
-        if !out.is_empty() {
-            out.push_str(", ");
-        }
-        out.push_str(w);
+    let sentences: Vec<&str> = trimmed
+        .split_inclusive(|c: char| matches!(c, '.' | '!' | '?' | '\n'))
+        .collect();
+    if sentences.len() > 1 {
+        let kept: Vec<&str> = sentences
+            .iter()
+            .copied()
+            .filter(|s| !is_hallucination_phrase(s))
+            .collect();
+        return kept.join("").trim().to_string();
     }
-    out
+    trimmed.to_string()
+}
+
+fn casing_score(w: &str) -> u8 {
+    let has_upper = w.chars().any(|c| c.is_ascii_uppercase());
+    let has_lower = w.chars().any(|c| c.is_ascii_lowercase());
+    if has_upper && has_lower {
+        3
+    } else if w.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) && has_upper {
+        2
+    } else {
+        1
+    }
 }
 
 #[tauri::command]
@@ -294,7 +586,7 @@ fn clear_history() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_stats() -> serde_json::Value {
+fn get_stats(state: State<'_, AppState>) -> serde_json::Value {
     let items = read_history_all();
     let total_words: u64 = items.iter().map(|e| e.words as u64).sum();
     let total_ms: u64 = items.iter().map(|e| e.duration_ms).sum();
@@ -303,12 +595,13 @@ fn get_stats() -> serde_json::Value {
     } else {
         0
     };
+    let settings = state.settings.lock().unwrap().clone();
     serde_json::json!({
         "total_words": total_words,
         "wpm": wpm,
         "streak": compute_streak(&items),
         "sessions": items.len(),
-        "voice_profile_size": voice_profile_prompt().len(),
+        "voice_profile_size": voice_profile_prompt(&settings).len(),
     })
 }
 
@@ -797,23 +1090,24 @@ fn stop_inner(state: &AppState) -> Result<(String, u64, String, String), String>
         return Err("no speech detected".into());
     }
 
-    let (provider, language, groq_key, groq_model) = {
+    let (provider, language, groq_key, groq_model, settings_clone) = {
         let s = state.settings.lock().unwrap();
         (
             s.provider.clone(),
             s.language.clone(),
             s.groq_api_key.clone(),
             s.groq_model.clone(),
+            s.clone(),
         )
     };
 
-    let voice_prompt = voice_profile_prompt();
+    let voice_prompt = voice_profile_prompt(&settings_clone);
 
     if provider == "groq" {
         let text = transcribe_groq(
             &pcm, 16000, &groq_key, &groq_model, &language, &voice_prompt,
         )?;
-        return Ok((text, duration_ms, "groq".into(), groq_model));
+        return Ok((filter_hallucinations(&text), duration_ms, "groq".into(), groq_model));
     }
 
     let (model_path, model_id) = ensure_active_model(state).map_err(|e| format!("model: {}", e))?;
@@ -864,7 +1158,7 @@ fn stop_inner(state: &AppState) -> Result<(String, u64, String, String), String>
             out.push_str(&seg);
         }
     }
-    Ok((out.trim().to_string(), duration_ms, "local".into(), model_id))
+    Ok((filter_hallucinations(out.trim()), duration_ms, "local".into(), model_id))
 }
 
 fn record_history(text: &str, duration_ms: u64, provider: &str, model: &str) {
@@ -887,6 +1181,20 @@ fn record_history(text: &str, duration_ms: u64, provider: &str, model: &str) {
 #[tauri::command]
 fn list_groq_models() -> Vec<String> {
     GROQ_MODELS.iter().map(|s| s.to_string()).collect()
+}
+
+#[tauri::command]
+fn list_builtin_modes() -> Vec<serde_json::Value> {
+    BUILTIN_MODES
+        .iter()
+        .map(|m| serde_json::json!({ "id": m.id, "name": m.name, "pack": m.pack }))
+        .collect()
+}
+
+#[tauri::command]
+fn preview_voice_prompt(state: State<'_, AppState>) -> String {
+    let s = state.settings.lock().unwrap().clone();
+    voice_profile_prompt(&s)
 }
 
 #[tauri::command]
@@ -1165,6 +1473,8 @@ pub fn run() {
             update_settings,
             open_settings,
             list_groq_models,
+            list_builtin_modes,
+            preview_voice_prompt,
             test_groq,
             list_history,
             delete_history_item,

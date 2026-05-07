@@ -42,6 +42,8 @@ let activeTab = "home";
 // Settings tab elements
 let modelsEl, langEl, autoPasteEl, settingsStatusEl;
 let providerInputs, groqSection, groqKeyEl, groqModelEl, groqStatusEl, groqTestBtn;
+let activeModeEl, customVocabEl, customModesListEl, addCustomModeBtn, promptPreviewEl;
+let builtinModesCache = null;
 let downloading = new Map();
 
 function setRecording(on) {
@@ -167,7 +169,7 @@ async function refreshStats() {
   statStreak2.textContent = s.streak;
   statSessions.textContent = s.sessions;
   const profSize = s.voice_profile_size || 0;
-  const pct = Math.min(100, Math.round((profSize / 220) * 100));
+  const pct = Math.min(100, Math.round((profSize / 880) * 100));
   profileBar.style.width = pct + "%";
   profileStatus.textContent = profSize > 0
     ? `Tracking ${profSize} chars of personalized vocabulary`
@@ -182,27 +184,135 @@ async function refreshSettingsCard() {
     const s = await invoke("get_settings");
     const prov = s.provider === "groq" ? `Groq · ${s.groq_model}` : `Local · ${s.active_model}`;
     providerInfo.textContent = `${prov} · lang=${s.language || "auto"}`;
+    if (activeModeEl && !activeModeEl.options.length) {
+      await populateModeDropdown(s);
+    } else if (activeModeEl) {
+      activeModeEl.value = s.active_mode || "notes";
+    }
   } catch {
     providerInfo.textContent = "—";
   }
 }
 
+const STOPWORDS_JS = new Set([
+  "the","and","for","you","that","this","with","have","are","was","but","not",
+  "from","they","has","had","were","what","when","your","all","would","there",
+  "their","can","will","just","like","get","got","one","out","about","into","some",
+  "more","than","then","him","her","his","she","them","now","any","been","being",
+  "also","very","much","make","made","going","want","need","know","think","thing",
+  "things","really","actually","okay",
+]);
+
 async function refreshProfile() {
-  const items = await invoke("list_history", { limit: 300 });
-  if (!items.length) {
-    profileWords.textContent = "(empty — dictate a few times to build profile)";
-    return;
+  const [items, settings, builtins, prompt, stats] = await Promise.all([
+    invoke("list_history", { limit: 300 }),
+    invoke("get_settings"),
+    builtinModesCache ? Promise.resolve(builtinModesCache) : invoke("list_builtin_modes"),
+    invoke("preview_voice_prompt"),
+    invoke("get_stats"),
+  ]);
+  builtinModesCache = builtins;
+
+  const promptEl = document.getElementById("profile-prompt");
+  if (promptEl) {
+    promptEl.textContent = prompt && prompt.length
+      ? prompt
+      : "(empty — dictate a few times or add custom vocabulary)";
   }
-  const counts = new Map();
-  for (const e of items) {
-    for (let w of (e.text || "").split(/[^A-Za-z0-9']+/)) {
-      w = w.toLowerCase().trim();
-      if (w.length < 4) continue;
-      counts.set(w, (counts.get(w) || 0) + 1);
+
+  const sizeEl = document.getElementById("prof-stat-size");
+  if (sizeEl) sizeEl.textContent = `${prompt.length} / 880`;
+  const bar = document.getElementById("prof-bar");
+  if (bar) bar.style.width = Math.min(100, Math.round((prompt.length / 880) * 100)) + "%";
+
+  const vocabLines = (settings.custom_vocab || "")
+    .split("\n").map((l) => l.trim()).filter(Boolean);
+  const vocabStat = document.getElementById("prof-stat-vocab");
+  if (vocabStat) vocabStat.textContent = vocabLines.length;
+
+  const sessEl = document.getElementById("prof-stat-sessions");
+  if (sessEl) sessEl.textContent = stats.sessions || 0;
+
+  const modeSel = document.getElementById("profile-active-mode");
+  if (modeSel) {
+    const builtinOpts = builtins
+      .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join("");
+    const customs = settings.custom_modes || [];
+    const customOpts = customs.length
+      ? `<optgroup label="Custom">${customs
+          .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`)
+          .join("")}</optgroup>`
+      : "";
+    modeSel.innerHTML = builtinOpts + customOpts;
+    modeSel.value = settings.active_mode || "notes";
+    if (!modeSel.dataset.wired) {
+      modeSel.dataset.wired = "1";
+      modeSel.addEventListener("change", async () => {
+        const s = await invoke("get_settings");
+        s.active_mode = modeSel.value || "notes";
+        await invoke("update_settings", { settings: s });
+        if (activeModeEl) activeModeEl.value = modeSel.value;
+        await refreshProfile();
+        await refreshStats();
+        await refreshPromptPreview();
+      });
     }
   }
-  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 80);
-  profileWords.textContent = top.map(([w, c]) => `${w} (${c})`).join(", ") || "(empty)";
+
+  const packEl = document.getElementById("profile-mode-pack");
+  if (packEl) {
+    const activeId = settings.active_mode || "notes";
+    const builtin = builtins.find((m) => m.id === activeId);
+    const custom = (settings.custom_modes || []).find((m) => m.id === activeId);
+    if (builtin && builtin.pack) {
+      packEl.textContent = builtin.pack;
+    } else if (custom && custom.terms.trim()) {
+      packEl.textContent = custom.terms;
+    } else {
+      packEl.textContent = "(this mode has no curated pack — relies on custom vocab + auto)";
+    }
+  }
+
+  const vocabListEl = document.getElementById("profile-vocab-list");
+  if (vocabListEl) {
+    vocabListEl.innerHTML = vocabLines.length
+      ? vocabLines.map((t) => `<span class="vocab-chip">${escapeHtml(t)}</span>`).join(" ")
+      : "No custom terms yet. Add some in Settings → Voice profile.";
+  }
+  const editLink = document.getElementById("profile-vocab-edit");
+  if (editLink && !editLink.dataset.wired) {
+    editLink.dataset.wired = "1";
+    editLink.addEventListener("click", () => setTab("settings"));
+  }
+
+  const counts = new Map();
+  const casing = new Map();
+  let autoTotal = 0;
+  for (const e of items) {
+    for (const raw of (e.text || "").split(/[^A-Za-z0-9']+/)) {
+      const w = raw.trim();
+      const low = w.toLowerCase();
+      const isAcr = w.length >= 2 && /^[A-Z0-9]+$/.test(w);
+      if (!w) continue;
+      if (!(w.length >= 4 || isAcr)) continue;
+      if (STOPWORDS_JS.has(low)) continue;
+      counts.set(low, (counts.get(low) || 0) + 1);
+      const prev = casing.get(low);
+      if (!prev || (/[A-Z]/.test(w) && /[a-z]/.test(w) && !(/[A-Z]/.test(prev) && /[a-z]/.test(prev)))) {
+        casing.set(low, w);
+      }
+      autoTotal++;
+    }
+  }
+  const autoStat = document.getElementById("prof-stat-auto");
+  if (autoStat) autoStat.textContent = counts.size;
+
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60);
+  if (profileWords) {
+    profileWords.innerHTML = top.length
+      ? top.map(([w, c]) => `<span class="vocab-chip">${escapeHtml(casing.get(w) || w)} <span class="muted">${c}</span></span>`).join(" ")
+      : "(empty — dictate a few times)";
+  }
 }
 
 async function refreshAll() {
@@ -307,7 +417,86 @@ async function refreshSettings() {
   }
   groqModelEl.value = s.groq_model || "whisper-large-v3-turbo";
   groqSection.style.display = (s.provider === "groq") ? "block" : "none";
+
+  if (customVocabEl) customVocabEl.value = s.custom_vocab || "";
+  await populateModeDropdown(s);
+  renderCustomModes(s.custom_modes || []);
+  await refreshPromptPreview();
+
   await refreshModels();
+}
+
+async function populateModeDropdown(s) {
+  if (!activeModeEl) return;
+  if (!builtinModesCache) {
+    builtinModesCache = await invoke("list_builtin_modes");
+  }
+  const builtinOpts = builtinModesCache
+    .map((m) => `<option value="${m.id}">${escapeHtml(m.name)}</option>`)
+    .join("");
+  const custom = s.custom_modes || [];
+  const customOpts = custom.length
+    ? `<optgroup label="Custom">${custom
+        .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`)
+        .join("")}</optgroup>`
+    : "";
+  activeModeEl.innerHTML = builtinOpts + customOpts;
+  activeModeEl.value = s.active_mode || "notes";
+}
+
+function renderCustomModes(modes) {
+  if (!customModesListEl) return;
+  if (!modes.length) {
+    customModesListEl.innerHTML =
+      '<div class="muted small" style="padding:10px 0;">No custom modes yet.</div>';
+    return;
+  }
+  customModesListEl.innerHTML = modes
+    .map(
+      (m) => `
+    <div class="custom-mode-row" data-id="${escapeHtml(m.id)}" style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;">
+      <div class="row" style="gap:8px;align-items:center;">
+        <input class="cm-name" value="${escapeHtml(m.name)}" placeholder="Mode name" style="flex:1;font-weight:600;" />
+        <button class="btn cm-delete" data-id="${escapeHtml(m.id)}" type="button" title="Delete">×</button>
+      </div>
+      <textarea class="cm-terms" rows="3" placeholder="Terms (one per line, or comma separated)" style="margin-top:8px;width:100%;font-family:ui-monospace,Menlo,monospace;font-size:12px;">${escapeHtml(m.terms)}</textarea>
+    </div>`
+    )
+    .join("");
+  customModesListEl.querySelectorAll(".cm-delete").forEach((b) => {
+    b.addEventListener("click", () => deleteCustomMode(b.dataset.id));
+  });
+  customModesListEl.querySelectorAll(".cm-name, .cm-terms").forEach((el) => {
+    el.addEventListener("change", saveBehavior);
+    el.addEventListener("blur", saveBehavior);
+  });
+}
+
+async function addCustomMode() {
+  const s = await invoke("get_settings");
+  const id = "cm_" + Date.now().toString(36);
+  s.custom_modes = [...(s.custom_modes || []), { id, name: "New mode", terms: "" }];
+  await invoke("update_settings", { settings: s });
+  await refreshSettings();
+}
+
+async function deleteCustomMode(id) {
+  const s = await invoke("get_settings");
+  s.custom_modes = (s.custom_modes || []).filter((m) => m.id !== id);
+  if (s.active_mode === id) s.active_mode = "notes";
+  await invoke("update_settings", { settings: s });
+  await refreshSettings();
+  await refreshStats();
+}
+
+async function refreshPromptPreview() {
+  if (!promptPreviewEl) return;
+  try {
+    const p = await invoke("preview_voice_prompt");
+    promptPreviewEl.textContent = p && p.length ? p : "(empty — dictate a few times to build profile)";
+  } catch {
+    promptPreviewEl.textContent = "(error)";
+  }
 }
 
 async function onModelAction(e) {
@@ -341,10 +530,22 @@ async function saveBehavior() {
   s.provider = [...providerInputs].find((r) => r.checked)?.value || "local";
   s.groq_api_key = groqKeyEl.value.trim();
   s.groq_model = groqModelEl.value;
+  if (customVocabEl) s.custom_vocab = customVocabEl.value;
+  if (activeModeEl) s.active_mode = activeModeEl.value || "notes";
+  if (customModesListEl) {
+    const rows = customModesListEl.querySelectorAll(".custom-mode-row");
+    s.custom_modes = [...rows].map((row) => ({
+      id: row.dataset.id,
+      name: row.querySelector(".cm-name")?.value.trim() || "Untitled",
+      terms: row.querySelector(".cm-terms")?.value || "",
+    }));
+  }
   await invoke("update_settings", { settings: s });
   groqSection.style.display = (s.provider === "groq") ? "block" : "none";
-  settingsStatusEl.textContent = "Settings saved.";
+  if (settingsStatusEl) settingsStatusEl.textContent = "Settings saved.";
   await refreshSettingsCard();
+  await refreshStats();
+  await refreshPromptPreview();
 }
 
 async function testGroq() {
@@ -406,6 +607,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   groqModelEl = document.querySelector("#groq-model");
   groqStatusEl = document.querySelector("#groq-status");
   groqTestBtn = document.querySelector("#groq-test");
+  activeModeEl = document.querySelector("#active-mode");
+  customVocabEl = document.querySelector("#custom-vocab");
+  customModesListEl = document.querySelector("#custom-modes-list");
+  addCustomModeBtn = document.querySelector("#add-custom-mode");
+  promptPreviewEl = document.querySelector("#prompt-preview");
+  if (activeModeEl) {
+    activeModeEl.addEventListener("change", saveBehavior);
+  }
+  if (customVocabEl) {
+    customVocabEl.addEventListener("change", saveBehavior);
+    customVocabEl.addEventListener("blur", saveBehavior);
+  }
+  if (addCustomModeBtn) {
+    addCustomModeBtn.addEventListener("click", addCustomMode);
+  }
   const groqKeyToggle = document.querySelector("#groq-key-toggle");
   if (groqKeyToggle) {
     groqKeyToggle.addEventListener("click", () => {

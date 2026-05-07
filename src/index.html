@@ -89,11 +89,45 @@
         </div>
 
         <div id="profile-tab" style="display:none;">
-          <div class="card">
-            <h3>Voice profile</h3>
-            <p class="muted small">Top words from recent dictations are sent to Whisper as a context prompt — biases recognition toward terms you actually use (names, jargon, acronyms).</p>
-            <div style="margin-top:12px;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--muted);background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:12px;-webkit-user-select:text;user-select:text;" id="profile-words">(empty — dictate a few times to build profile)</div>
-            <div class="muted small" style="margin-top:10px;">More dictations → more accurate biasing. Cleared with history.</div>
+          <div class="card profile-hero">
+            <div class="profile-hero-row">
+              <div class="profile-hero-title">
+                <h3>Voice profile</h3>
+                <p class="muted small">Bias prompt sent before every transcription. Switch mode to match what you're doing.</p>
+              </div>
+              <div class="profile-mode-badge">
+                <span class="muted small">ACTIVE MODE</span>
+                <select id="profile-active-mode"></select>
+              </div>
+            </div>
+            <div class="profile-stats">
+              <div class="profile-stat"><div class="muted small">PROMPT</div><div class="value" id="prof-stat-size">0 / 880</div></div>
+              <div class="profile-stat"><div class="muted small">CUSTOM</div><div class="value" id="prof-stat-vocab">0</div></div>
+              <div class="profile-stat"><div class="muted small">AUTO</div><div class="value" id="prof-stat-auto">0</div></div>
+              <div class="profile-stat"><div class="muted small">DICTATIONS</div><div class="value" id="prof-stat-sessions">0</div></div>
+            </div>
+            <div class="progress" style="margin-top:10px;"><div class="bar" id="prof-bar" style="width:5%"></div></div>
+          </div>
+
+          <div class="profile-grid">
+            <div class="card profile-prompt-card">
+              <h3>Live prompt</h3>
+              <div id="profile-prompt" class="prompt-preview"></div>
+            </div>
+            <div class="profile-side">
+              <div class="card">
+                <h3>Mode pack</h3>
+                <div id="profile-mode-pack" class="prompt-preview small">—</div>
+              </div>
+              <div class="card">
+                <h3>Custom vocabulary <a class="profile-edit-link" id="profile-vocab-edit">Edit →</a></h3>
+                <div id="profile-vocab-list" class="chip-row">No custom terms yet.</div>
+              </div>
+              <div class="card">
+                <h3>Top auto-tracked</h3>
+                <div id="profile-words" class="chip-row">(empty)</div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -176,6 +210,26 @@
           </div>
 
           <div class="card" style="margin-top:18px;">
+            <h3>Voice profile</h3>
+            <div class="field">
+              <label for="custom-vocab">Custom vocabulary</label>
+              <textarea id="custom-vocab" rows="6" placeholder="One per line. Names, acronyms, jargon, phrases…&#10;e.g. Joy Madhu&#10;MyVoice&#10;whisper.cpp&#10;Tauri" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;"></textarea>
+              <div class="muted small">Always sent to the recognizer to bias toward these terms. Casing preserved.</div>
+            </div>
+            <div class="field">
+              <label>Custom context modes</label>
+              <div id="custom-modes-list"></div>
+              <button id="add-custom-mode" class="btn" type="button" style="margin-top:8px;">+ Add custom mode</button>
+              <div class="muted small" style="margin-top:6px;">Built-in: AI prompt, Email, Code/tech, Notes. Add your own (e.g. Medical, Legal) — switch from the right-side dropdown.</div>
+            </div>
+            <div class="field">
+              <label>Live prompt preview</label>
+              <div id="prompt-preview" style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--muted);background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:10px;max-height:140px;overflow:auto;-webkit-user-select:text;user-select:text;">(empty)</div>
+              <div class="muted small">What gets sent as the Whisper / Groq prompt right now.</div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:18px;">
             <h3>Local models</h3>
             <div id="models" class="model-list"></div>
             <div id="settings-status" class="status-line" style="margin-top:12px;"></div>
@@ -210,7 +264,12 @@
 
         <div class="card profile-card">
           <h3>Your Voice Profile</h3>
-          <div id="profile-status" class="muted small">Keep using MyVoice for new insights</div>
+          <div class="field" style="margin-top:6px;">
+            <label for="active-mode" style="font-size:11px;">Context mode</label>
+            <select id="active-mode" style="width:100%;"></select>
+            <div class="muted small" style="margin-top:4px;">Tells the recognizer what you're doing right now.</div>
+          </div>
+          <div id="profile-status" class="muted small" style="margin-top:10px;">Keep using MyVoice for new insights</div>
           <div class="progress"><div class="bar" id="profile-bar" style="width:5%"></div></div>
           <div class="small" id="profile-info">Updates with each dictation</div>
         </div>
