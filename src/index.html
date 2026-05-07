@@ -4,11 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MyVoice</title>
+    <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
     <link rel="stylesheet" href="styles.css" />
     <script type="module" src="/main.js" defer></script>
   </head>
   <body class="with-sidebar">
     <aside class="sidebar">
+      <div class="sidebar-logo" title="MyVoice">
+        <img src="assets/logo.svg" alt="MyVoice" />
+      </div>
+      <div class="sidebar-divider"></div>
       <button class="nav-btn active" data-tab="home" title="Home">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
       </button>
@@ -26,24 +31,33 @@
 
     <main class="main">
       <div class="col">
-        <div class="welcome" id="welcome">Welcome back</div>
 
         <div id="home-tab">
-          <div class="hero-card">
+          <div class="hero-card" id="hero-card">
+            <button class="hero-collapse" id="hero-toggle" title="Collapse" aria-label="Collapse">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 9 18 15"/></svg>
+            </button>
             <h2><em>Hold</em> the hotkey, speak, release.</h2>
             <p>Dictation runs locally on Whisper or via Groq cloud. Auto-pastes into the focused window and copies to clipboard.</p>
             <div class="actions">
               <button class="pill-btn" id="rec">Start recording</button>
-              <span class="row" style="gap:6px;color:#d8d2ee;font-size:13px;">
+              <button class="pill-btn ghost" id="cancel-rec" style="border:1px solid rgba(255,255,255,0.3);">Cancel</button>
+              <span class="row kbd-hints" style="gap:6px;color:#d8d2ee;font-size:13px;flex-wrap:wrap;">
                 <span class="kbd" style="background:rgba(255,255,255,0.15);border-color:transparent;color:white;">⌃ Ctrl</span>
                 <span>+</span>
                 <span class="kbd" style="background:rgba(255,255,255,0.15);border-color:transparent;color:white;">⇧ Shift</span>
                 <span>+</span>
                 <span class="kbd" style="background:rgba(255,255,255,0.15);border-color:transparent;color:white;">Space</span>
+                <span style="opacity:0.7;">or</span>
+                <span class="kbd" style="background:rgba(255,255,255,0.15);border-color:transparent;color:white;">F9</span>
               </span>
             </div>
           </div>
           <div id="status"></div>
+          <div class="history-toolbar">
+            <input id="history-search" type="search" placeholder="Search history…" />
+            <span id="history-count" class="muted small"></span>
+          </div>
           <div id="history-container"></div>
         </div>
 
@@ -71,13 +85,15 @@
             <h3>Hotkey</h3>
             <div class="hotkey-row">
               <span class="label">Push to talk:</span>
-              <span class="kbd">⌃ Ctrl</span>
-              <span>+</span>
-              <span class="kbd">⇧ Shift</span>
-              <span>+</span>
-              <span class="kbd">Space</span>
+              <span class="kbd">⌃ Ctrl</span><span>+</span><span class="kbd">⇧ Shift</span><span>+</span><span class="kbd">Space</span>
+              <span class="muted small">or</span>
+              <span class="kbd">⌃ Ctrl</span><span>+</span><span class="kbd">⌥ Alt</span><span>+</span><span class="kbd">Space</span>
+              <span class="muted small">or</span>
+              <span class="kbd">Super</span><span>+</span><span class="kbd">Space</span>
+              <span class="muted small">or</span>
+              <span class="kbd">F9</span>
             </div>
-            <div class="muted small" style="margin-top:8px;">Hold to record. Release to transcribe + auto-paste.</div>
+            <div class="muted small" style="margin-top:8px;">Hold to record. Release to transcribe + auto-paste. On Ubuntu/GNOME, Ctrl+Shift+Space is often grabbed by IBus — use F9 or Ctrl+Alt+Space if the primary doesn't fire.</div>
           </div>
 
           <div class="card" style="margin-top:18px;">
@@ -99,7 +115,8 @@
               <div class="field">
                 <label>Groq API key</label>
                 <div class="row">
-                  <input id="groq-key" type="text" placeholder="gsk_..." style="flex:1;min-width:280px;" />
+                  <input id="groq-key" type="password" placeholder="gsk_..." style="flex:1;min-width:280px;" autocomplete="off" />
+                  <button id="groq-key-toggle" class="btn" type="button" title="Show/hide">Show</button>
                   <button id="groq-test" class="btn">Test key</button>
                 </div>
                 <div class="muted small">Get one free at <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a>. Stored locally in settings.json.</div>

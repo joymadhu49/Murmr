@@ -8,20 +8,30 @@
   </head>
   <body>
     <div id="hud" class="hud" data-state="idle">
-      <div class="pill idle-pill">
-        <span class="label">Dictate</span>
-        <span class="kbd"><span class="caret">⌃</span> Ctrl</span>
-        <span class="plus">+</span>
-        <span class="kbd"><span class="caret">⇧</span> Shift</span>
-      </div>
+      <button class="pill idle-pill" id="idle-pill" title="Click to start recording">
+        <span class="dot"></span>
+        <span class="label">Click to dictate</span>
+        <span class="kbd">F9</span>
+      </button>
+
       <div class="pill rec-pill">
-        <div class="dots">
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span>
+        <div class="bars" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
         </div>
+        <span class="state-label" id="state-label">Listening</span>
+        <button class="hud-btn stop-btn" id="stop-btn" title="Stop &amp; transcribe" aria-label="Stop">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        </button>
+        <button class="hud-btn cancel-btn" id="cancel-btn" title="Cancel" aria-label="Cancel">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
       </div>
+
       <div class="pill done-pill">
-        <span class="check">✓</span>
+        <span class="check-circle">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12 10 17 19 7"/></svg>
+        </span>
         <span class="done-text">Pasted</span>
       </div>
     </div>

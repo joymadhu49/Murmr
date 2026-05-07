@@ -6,7 +6,9 @@ let btn, status, providerInfo;
 let statWords, statWpm, statStreak;
 let statWords2, statWpm2, statStreak2, statSessions;
 let profileWords, profileBar, profileStatus, profileInfo;
-let historyContainer;
+let historyContainer, historySearchEl, historyCountEl;
+let historyItems = [];
+let historyQuery = "";
 let activeTab = "home";
 
 // Settings tab elements
@@ -68,9 +70,21 @@ function rowHtml(e) {
   `;
 }
 
-function renderHistory(items) {
-  if (!items.length) {
+function renderHistory() {
+  const all = historyItems;
+  const q = historyQuery.trim().toLowerCase();
+  const items = q ? all.filter((e) => (e.text || "").toLowerCase().includes(q)) : all;
+  if (historyCountEl) {
+    historyCountEl.textContent = q
+      ? `${items.length} of ${all.length}`
+      : (all.length ? `${all.length} dictations` : "");
+  }
+  if (!all.length) {
     historyContainer.innerHTML = `<div class="empty">No dictations yet. Hold <b>Ctrl + Shift + Space</b> and speak.</div>`;
+    return;
+  }
+  if (!items.length) {
+    historyContainer.innerHTML = `<div class="empty">No matches for "${escapeHtml(historyQuery)}".</div>`;
     return;
   }
   const groups = new Map();
@@ -111,8 +125,8 @@ async function onRowAction(e) {
 }
 
 async function refreshHistory() {
-  const items = await invoke("list_history", { limit: 200 });
-  renderHistory(items);
+  historyItems = await invoke("list_history", { limit: 200 });
+  renderHistory();
 }
 
 async function refreshStats() {
@@ -172,7 +186,7 @@ async function toggle() {
     try {
       await invoke("start_recording");
       setRecording(true);
-      status.textContent = "Recording… release Ctrl+Shift+Space or click Stop.";
+      status.textContent = "Recording… click Stop or press F9.";
     } catch (e) {
       status.textContent = "Error: " + e;
     }
@@ -187,6 +201,16 @@ async function toggle() {
     }
     btn.disabled = false;
     setRecording(false);
+  }
+}
+
+async function cancel() {
+  try {
+    await invoke("cancel_recording");
+    setRecording(false);
+    status.textContent = "Cancelled.";
+  } catch (e) {
+    status.textContent = "Error: " + e;
   }
 }
 
@@ -330,6 +354,19 @@ window.addEventListener("DOMContentLoaded", async () => {
   profileStatus = document.querySelector("#profile-status");
   profileInfo = document.querySelector("#profile-info");
   historyContainer = document.querySelector("#history-container");
+  historySearchEl = document.querySelector("#history-search");
+  historyCountEl = document.querySelector("#history-count");
+  if (historySearchEl) {
+    let searchTimer = null;
+    historySearchEl.addEventListener("input", (e) => {
+      const v = e.target.value;
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        historyQuery = v;
+        renderHistory();
+      }, 120);
+    });
+  }
 
   modelsEl = document.querySelector("#models");
   langEl = document.querySelector("#lang");
@@ -341,8 +378,32 @@ window.addEventListener("DOMContentLoaded", async () => {
   groqModelEl = document.querySelector("#groq-model");
   groqStatusEl = document.querySelector("#groq-status");
   groqTestBtn = document.querySelector("#groq-test");
+  const groqKeyToggle = document.querySelector("#groq-key-toggle");
+  if (groqKeyToggle) {
+    groqKeyToggle.addEventListener("click", () => {
+      const isPwd = groqKeyEl.type === "password";
+      groqKeyEl.type = isPwd ? "text" : "password";
+      groqKeyToggle.textContent = isPwd ? "Hide" : "Show";
+    });
+  }
 
   btn.addEventListener("click", toggle);
+  const cancelBtn = document.querySelector("#cancel-rec");
+  if (cancelBtn) cancelBtn.addEventListener("click", cancel);
+
+  // Hero collapse toggle
+  const hero = document.querySelector("#hero-card");
+  const heroToggle = document.querySelector("#hero-toggle");
+  const applyHero = (compact) => {
+    hero.classList.toggle("compact", compact);
+  };
+  applyHero(localStorage.getItem("heroCompact") === "1");
+  heroToggle.addEventListener("click", () => {
+    const next = !hero.classList.contains("compact");
+    applyHero(next);
+    localStorage.setItem("heroCompact", next ? "1" : "0");
+  });
+
   document.querySelectorAll(".nav-btn[data-tab]").forEach((b) => {
     b.addEventListener("click", () => setTab(b.dataset.tab));
   });
@@ -360,7 +421,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     const s = e.payload;
     if (s === "recording") {
       setRecording(true);
-      status.textContent = "Recording… release Ctrl+Shift+Space.";
+      status.textContent = "Recording… click Stop or press F9.";
     } else if (s === "transcribing") {
       status.textContent = "Transcribing…";
     } else if (s === "done") {

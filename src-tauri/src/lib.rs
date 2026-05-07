@@ -123,6 +123,8 @@ struct AppState {
     session: Mutex<Option<Session>>,
     whisper: Mutex<Option<(String, WhisperContext)>>,
     settings: Mutex<AppSettings>,
+    hotkey_held: AtomicBool,
+    hotkey_release_seq: std::sync::atomic::AtomicU64,
 }
 
 fn data_dir() -> Result<PathBuf> {
@@ -921,13 +923,24 @@ fn deliver_text(text: &str, auto_paste: bool) {
 
 fn position_hud(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("hud") {
-        if let Ok(Some(monitor)) = win.current_monitor() {
+        let mon = win
+            .current_monitor()
+            .ok()
+            .flatten()
+            .or_else(|| app.primary_monitor().ok().flatten())
+            .or_else(|| {
+                app.available_monitors()
+                    .ok()
+                    .and_then(|mut v| v.pop())
+            });
+        if let Some(monitor) = mon {
+            let pos = monitor.position();
             let size = monitor.size();
             let scale = monitor.scale_factor();
             let win_w = (360.0 * scale) as i32;
             let win_h = (96.0 * scale) as i32;
-            let x = (size.width as i32 - win_w) / 2;
-            let y = size.height as i32 - win_h - (60.0 * scale) as i32;
+            let x = pos.x + (size.width as i32 - win_w) / 2;
+            let y = pos.y + size.height as i32 - win_h - (80.0 * scale) as i32;
             let _ = win.set_position(PhysicalPosition::new(x, y));
         }
     }
@@ -937,6 +950,7 @@ fn show_hud(app: &AppHandle, state: &str) {
     if let Some(win) = app.get_webview_window("hud") {
         position_hud(app);
         let _ = win.show();
+        let _ = win.set_always_on_top(true);
     }
     let _ = app.emit("rec-state", state);
 }
@@ -997,22 +1011,67 @@ async fn stop_recording(app: AppHandle, state: State<'_, AppState>) -> Result<St
     }
 }
 
+#[tauri::command]
+fn cancel_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let mut guard = state.session.lock().unwrap();
+    if let Some(mut sess) = guard.take() {
+        sess.stop.store(true, Ordering::SeqCst);
+        if let Some(h) = sess.handle.take() {
+            let _ = h.join();
+        }
+    }
+    let _ = app.emit("rec-state", "idle");
+    let app2 = app.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(150));
+        hide_hud(&app2);
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn is_wayland() -> bool {
+    std::env::var("XDG_SESSION_TYPE")
+        .map(|v| v.eq_ignore_ascii_case("wayland"))
+        .unwrap_or(false)
+        || std::env::var_os("WAYLAND_DISPLAY").is_some()
+}
+
 fn handle_hotkey(app: &AppHandle, pressed: bool) {
     let state = app.state::<AppState>();
     if pressed {
+        // Mark held; cancels any pending debounced release from X11 auto-repeat.
+        state.hotkey_held.store(true, Ordering::SeqCst);
         if state.session.lock().unwrap().is_some() {
             return;
         }
         let _ = start_inner(&state);
         show_hud(app, "recording");
     } else {
+        state.hotkey_held.store(false, Ordering::SeqCst);
+        // X11 key auto-repeat fires Release+Press pairs while a key is physically
+        // held. Debounce: if a Press arrives within the window, treat as still held.
+        let seq = state
+            .hotkey_release_seq
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1);
         if state.session.lock().unwrap().is_none() {
             return;
         }
         let app2 = app.clone();
-        let _ = app.emit("rec-state", "transcribing");
         thread::spawn(move || {
+            thread::sleep(Duration::from_millis(90));
             let st = app2.state::<AppState>();
+            if st.hotkey_held.load(Ordering::SeqCst) {
+                return;
+            }
+            if st.hotkey_release_seq.load(Ordering::SeqCst) != seq {
+                return;
+            }
+            if st.session.lock().unwrap().is_none() {
+                return;
+            }
+            let _ = app2.emit("rec-state", "transcribing");
             let auto_paste = st.settings.lock().unwrap().auto_paste;
             match stop_inner(&st) {
                 Ok((text, dur, provider, model)) => {
@@ -1050,7 +1109,13 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
-                    if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::Space) {
+                    let primary =
+                        shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::Space);
+                    let alt = shortcut.matches(Modifiers::CONTROL | Modifiers::ALT, Code::Space);
+                    let super_space =
+                        shortcut.matches(Modifiers::SUPER, Code::Space);
+                    let f9 = shortcut.matches(Modifiers::empty(), Code::F9);
+                    if primary || alt || super_space || f9 {
                         match event.state {
                             ShortcutState::Pressed => handle_hotkey(app, true),
                             ShortcutState::Released => handle_hotkey(app, false),
@@ -1060,8 +1125,28 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            let sc = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
-            app.global_shortcut().register(sc)?;
+            // Register multiple bindings so at least one survives desktop-environment grabs.
+            // Ubuntu/GNOME's IBus often steals Ctrl+Shift+Space (input-method switcher).
+            let bindings: &[(&str, Shortcut)] = &[
+                (
+                    "Ctrl+Shift+Space",
+                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space),
+                ),
+                (
+                    "Ctrl+Alt+Space",
+                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space),
+                ),
+                (
+                    "Super+Space",
+                    Shortcut::new(Some(Modifiers::SUPER), Code::Space),
+                ),
+                ("F9", Shortcut::new(None, Code::F9)),
+            ];
+            for (label, sc) in bindings {
+                if let Err(e) = app.global_shortcut().register(sc.clone()) {
+                    eprintln!("hotkey {label} register failed: {e}");
+                }
+            }
             if let Some(hud) = app.get_webview_window("hud") {
                 let _ = hud.hide();
             }
@@ -1070,6 +1155,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_recording,
             stop_recording,
+            cancel_recording,
+            is_wayland,
             list_models,
             download_model,
             delete_model,
