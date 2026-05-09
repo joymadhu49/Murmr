@@ -80,6 +80,29 @@ function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+function renderPromptChips(prompt) {
+  if (!prompt || !prompt.length) {
+    return `<div class="prompt-empty">(empty — dictate a few times or add custom vocabulary)</div>`;
+  }
+  const groups = [];
+  const re = /([A-Z][A-Za-z ]{2,30}?):\s*([^.]+?)(?=\.\s+[A-Z][A-Za-z ]{2,30}?:|\.?\s*$)/g;
+  let m;
+  while ((m = re.exec(prompt)) !== null) {
+    const label = m[1].trim();
+    const items = m[2].split(/[,;]/).map((s) => s.trim().replace(/\.$/, "")).filter(Boolean);
+    if (items.length) groups.push({ label, items });
+  }
+  if (!groups.length) {
+    const items = prompt.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+    groups.push({ label: "Prompt", items });
+  }
+  return groups.map((g) => `
+    <div class="prompt-group">
+      <div class="prompt-group-label">${escapeHtml(g.label)} <span class="muted">${g.items.length}</span></div>
+      <div class="chip-row">${g.items.map((t) => `<span class="vocab-chip">${escapeHtml(t)}</span>`).join("")}</div>
+    </div>`).join("");
+}
+
 function rowHtml(e) {
   return `
     <div class="history-row ${e.flagged ? "flagged" : ""}" data-id="${e.id}">
@@ -222,9 +245,7 @@ async function refreshProfile() {
 
   const promptEl = document.getElementById("profile-prompt");
   if (promptEl) {
-    promptEl.textContent = prompt && prompt.length
-      ? prompt
-      : "(empty — dictate a few times or add custom vocabulary)";
+    promptEl.innerHTML = renderPromptChips(prompt);
   }
 
   const sizeEl = document.getElementById("prof-stat-size");

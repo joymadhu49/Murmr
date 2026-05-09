@@ -662,25 +662,27 @@ button.btn.danger {
   box-shadow: none !important;
 }
 
-/* Profile hero — light cream too */
+/* Profile hero — flat white panel */
 #profile-tab .profile-hero {
-  background: var(--cream) !important;
-  border: 1px solid var(--cream-border) !important;
-  box-shadow: none !important;
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 1px 2px rgba(20,14,40,0.03) !important;
+  border-radius: 14px !important;
 }
 #profile-tab .profile-hero h3 {
   color: var(--text) !important;
   font-family: "Tiempos Headline", Georgia, serif !important;
-  font-weight: 400 !important;
+  font-weight: 500 !important;
   font-size: 18px !important;
   text-transform: none !important;
+  letter-spacing: -0.2px !important;
 }
 #profile-tab .profile-hero p {
   color: var(--text-2) !important;
 }
 #profile-tab .profile-mode-badge {
-  background: rgba(255,255,255,0.6) !important;
-  border: 1px solid rgba(0,0,0,0.06) !important;
+  background: var(--panel-2) !important;
+  border: 1px solid var(--border) !important;
 }
 #profile-tab .profile-mode-badge .small {
   color: var(--muted) !important;
@@ -690,17 +692,23 @@ button.btn.danger {
   color: var(--text) !important;
   border: 1px solid var(--border) !important;
 }
-#profile-tab .profile-stat {
-  background: rgba(255,255,255,0.5) !important;
-  border: 1px solid rgba(0,0,0,0.06) !important;
+#profile-tab .profile-stats {
+  background: var(--panel-2) !important;
+  border: 1px solid var(--border) !important;
 }
+#profile-tab .profile-stat {
+  background: transparent !important;
+  border: none !important;
+  border-right: 1px solid var(--border) !important;
+}
+#profile-tab .profile-stat:last-child { border-right: none !important; }
 #profile-tab .profile-stat .value { color: var(--text) !important; }
 #profile-tab .profile-stat .small { color: var(--muted) !important; }
 
 #profile-tab .profile-prompt-card .prompt-preview {
-  background: #FAFAF8 !important;
+  background: var(--panel-2) !important;
   border: 1px solid var(--border) !important;
-  color: var(--text-2) !important;
+  color: var(--text) !important;
 }
 
 /* Progress bars */

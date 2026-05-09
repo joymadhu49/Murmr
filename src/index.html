@@ -135,46 +135,52 @@
         </div>
 
         <div id="profile-tab" style="display:none;">
-          <div class="card profile-hero">
-            <div class="profile-hero-row">
-              <div class="profile-hero-title">
-                <h3>Voice profile</h3>
-                <p class="muted small">Bias prompt sent before every transcription. Switch mode to match what you're doing.</p>
-              </div>
-              <div class="profile-mode-badge">
-                <span class="muted small">ACTIVE MODE</span>
+          <header class="vp-header">
+            <div class="vp-title-row">
+              <h2 class="vp-title">Voice profile</h2>
+              <div class="vp-mode">
+                <span class="vp-mode-label">Active mode</span>
                 <select id="profile-active-mode"></select>
               </div>
             </div>
-            <div class="profile-stats">
-              <div class="profile-stat"><div class="muted small">PROMPT</div><div class="value" id="prof-stat-size">0 / 880</div></div>
-              <div class="profile-stat"><div class="muted small">CUSTOM</div><div class="value" id="prof-stat-vocab">0</div></div>
-              <div class="profile-stat"><div class="muted small">AUTO</div><div class="value" id="prof-stat-auto">0</div></div>
-              <div class="profile-stat"><div class="muted small">DICTATIONS</div><div class="value" id="prof-stat-sessions">0</div></div>
+            <p class="vp-subtitle">Bias prompt sent before every transcription. Switch mode to match what you're doing.</p>
+            <div class="vp-stats-line">
+              <span class="vp-stat"><b id="prof-stat-size">0 / 880</b><i>prompt</i></span>
+              <span class="vp-stat"><b id="prof-stat-vocab">0</b><i>custom</i></span>
+              <span class="vp-stat"><b id="prof-stat-auto">0</b><i>auto</i></span>
+              <span class="vp-stat"><b id="prof-stat-sessions">0</b><i>dictations</i></span>
             </div>
-            <div class="progress" style="margin-top:10px;"><div class="bar" id="prof-bar" style="width:5%"></div></div>
-          </div>
+            <div class="vp-progress"><div class="bar" id="prof-bar" style="width:5%"></div></div>
+          </header>
 
-          <div class="profile-grid">
-            <div class="card profile-prompt-card">
-              <h3>Live prompt</h3>
-              <div id="profile-prompt" class="prompt-preview"></div>
+          <section class="vp-section">
+            <div class="vp-section-head">
+              <h3 class="vp-section-title">Live prompt</h3>
             </div>
-            <div class="profile-side">
-              <div class="card">
-                <h3>Mode pack</h3>
-                <div id="profile-mode-pack" class="prompt-preview small">—</div>
-              </div>
-              <div class="card">
-                <h3>Custom vocabulary <a class="profile-edit-link" id="profile-vocab-edit">Edit →</a></h3>
-                <div id="profile-vocab-list" class="chip-row">No custom terms yet.</div>
-              </div>
-              <div class="card">
-                <h3>Top auto-tracked</h3>
-                <div id="profile-words" class="chip-row">(empty)</div>
-              </div>
+            <div id="profile-prompt"></div>
+          </section>
+
+          <section class="vp-section">
+            <div class="vp-section-head">
+              <h3 class="vp-section-title">Mode template</h3>
             </div>
-          </div>
+            <div id="profile-mode-pack" class="vp-template">—</div>
+          </section>
+
+          <section class="vp-section">
+            <div class="vp-section-head">
+              <h3 class="vp-section-title">Custom vocabulary</h3>
+              <a class="vp-action" id="profile-vocab-edit">Edit →</a>
+            </div>
+            <div id="profile-vocab-list" class="chip-row">No custom terms yet.</div>
+          </section>
+
+          <section class="vp-section">
+            <div class="vp-section-head">
+              <h3 class="vp-section-title">Top auto-tracked</h3>
+            </div>
+            <div id="profile-words" class="chip-row">(empty)</div>
+          </section>
         </div>
 
         <div id="settings-tab" style="display:none;">

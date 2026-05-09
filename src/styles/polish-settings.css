@@ -389,102 +389,129 @@
 .main { padding-top: 52px !important; padding-bottom: 16px !important; }
 
 /* ============================================================
-   Voice Profile — pro polish v2
+   Voice Profile — pro polish v3 (light, flat)
    ============================================================ */
 
 #profile-tab .profile-hero {
-  background:
-    radial-gradient(120% 140% at 100% 0%, rgba(182, 155, 255, 0.18) 0%, transparent 55%),
-    linear-gradient(135deg, #16111e 0%, #1d1830 50%, #251c45 100%);
-  border: 1px solid rgba(182, 155, 255, 0.18);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 14px 32px -16px rgba(20, 12, 50, 0.6);
-  padding: 22px 24px !important;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(20, 14, 40, 0.03);
+  padding: 20px 24px !important;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  border-radius: 14px;
 }
 
 #profile-tab .profile-hero h3 {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--text);
+  margin: 0 0 4px 0;
+  text-transform: none;
 }
 #profile-tab .profile-hero h3::before { display: none; }
 
 #profile-tab .profile-hero p {
-  color: rgba(216, 210, 238, 0.8);
+  color: var(--text-2);
   font-size: 13px;
   line-height: 1.5;
 }
 
 #profile-tab .profile-mode-badge {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
   align-items: stretch !important;
-  gap: 6px !important;
+  gap: 4px !important;
 }
 #profile-tab .profile-mode-badge .small {
-  font-size: 10px;
-  letter-spacing: 0.85px;
-  font-weight: 700;
-  color: rgba(216, 210, 238, 0.65);
-}
-#profile-tab .profile-mode-badge select {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #fff;
-  font-size: 13px;
-  padding: 7px 30px 7px 12px;
-}
-#profile-tab .profile-mode-badge select:hover {
-  background: rgba(0, 0, 0, 0.4);
-  border-color: rgba(182, 155, 255, 0.35);
-}
-
-#profile-tab .profile-stats {
-  margin-top: 18px;
-  gap: 12px;
-}
-#profile-tab .profile-stat {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 10px 14px;
-  border-radius: 12px;
-  transition: 200ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-#profile-tab .profile-stat:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(182, 155, 255, 0.25);
-}
-#profile-tab .profile-stat .small,
-#profile-tab .profile-stat .muted.small {
-  font-size: 9.5px !important;
+  font-size: 9.5px;
   letter-spacing: 0.9px;
   font-weight: 700;
-  color: rgba(216, 210, 238, 0.55) !important;
+  color: var(--text-2);
   text-transform: uppercase;
 }
+#profile-tab .profile-mode-badge select {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 28px 6px 10px;
+  border-radius: 8px;
+}
+#profile-tab .profile-mode-badge select:hover {
+  border-color: var(--accent);
+}
+
+/* Stats: collapse 4 tiles -> inline strip */
+#profile-tab .profile-stats {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 4px;
+  grid-template-columns: none;
+}
+#profile-tab .profile-stat {
+  flex: 1 1 0;
+  min-width: 110px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  padding: 4px 14px;
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  transition: none;
+}
+#profile-tab .profile-stat:last-child { border-right: none; }
+#profile-tab .profile-stat:hover { background: transparent; }
+#profile-tab .profile-stat:not(:last-child):hover { border-right-color: var(--border); }
+
+#profile-tab .profile-stat .small,
+#profile-tab .profile-stat .muted.small {
+  font-size: 10px !important;
+  letter-spacing: 0.85px;
+  font-weight: 600;
+  color: var(--text-2) !important;
+  text-transform: uppercase;
+  order: 2;
+}
 #profile-tab .profile-stat .value {
-  font-size: 22px;
+  font-size: 17px;
   font-weight: 700;
-  color: #fff;
-  letter-spacing: -0.4px;
-  margin-top: 2px;
+  color: var(--text);
+  letter-spacing: -0.3px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  order: 1;
 }
 
 #profile-tab .profile-hero .progress {
-  height: 4px;
-  margin-top: 14px;
-  background: rgba(0, 0, 0, 0.35);
-  border: none;
+  height: 3px;
+  margin-top: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
 }
 #profile-tab .profile-hero .progress > .bar {
-  background: linear-gradient(90deg, #b69bff 0%, #d4baff 100%);
-  box-shadow: 0 0 14px rgba(212, 186, 255, 0.55);
+  background: var(--accent);
+  box-shadow: none;
+}
+
+@media (max-width: 720px) {
+  #profile-tab .profile-stats { flex-direction: column; padding: 4px; }
+  #profile-tab .profile-stat { border-right: none; border-bottom: 1px solid var(--border); padding: 8px 12px; }
+  #profile-tab .profile-stat:last-child { border-bottom: none; }
 }
 
 /* ---- profile-grid card refinements ---- */
@@ -502,12 +529,12 @@
   background: var(--panel);
 }
 #profile-tab .profile-prompt-card .prompt-preview {
-  background: #0a0a0e;
-  border: 1px solid #1a1a22;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
   font-size: 12.5px;
   line-height: 1.65;
   padding: 14px 16px;
-  color: #d8d2ee;
+  color: var(--text);
 }
 
 /* Mode pack empty state */
@@ -586,3 +613,251 @@
   max-height: 220px;
   overflow-y: auto;
 }
+
+/* ============================================================
+   Live prompt — chip groups (replaces comma-soup wall)
+   ============================================================ */
+#profile-prompt {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  font-family: inherit !important;
+  white-space: normal !important;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+#profile-prompt .prompt-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#profile-prompt .prompt-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.85px;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#profile-prompt .prompt-group-label .muted {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 0;
+  text-transform: none;
+}
+#profile-prompt .chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: 100%;
+  overflow: hidden;
+}
+#profile-prompt .vocab-chip {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  padding: 3px 9px;
+  background: var(--panel-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px;
+}
+#profile-prompt .prompt-empty {
+  color: var(--text-2);
+  font-style: italic;
+  padding: 14px;
+  text-align: center;
+}
+
+/* Side cards: constrain chip overflow */
+#profile-tab .profile-side .card { overflow: hidden; min-width: 0; }
+#profile-tab .profile-side .chip-row { max-width: 100%; overflow-x: hidden; overflow-y: auto; }
+
+/* Mode pack: secondary visual weight */
+#profile-tab #profile-mode-pack {
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 90px;
+  text-align: left;
+  font-style: normal;
+}
+
+/* ============================================================
+   Voice Profile — minimal Wispr-style (single column, no cards)
+   ============================================================ */
+#profile-tab {
+  display: flex !important;
+  flex-direction: column;
+  gap: 0;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 8px 24px 32px !important;
+  overflow-y: auto;
+}
+
+/* Header */
+#profile-tab .vp-header {
+  padding: 24px 0 18px;
+  border-bottom: 1px solid var(--border);
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#profile-tab .vp-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+#profile-tab .vp-title {
+  font-family: "Tiempos Headline", Georgia, serif;
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.4px;
+  margin: 0;
+}
+#profile-tab .vp-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#profile-tab .vp-mode-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-2);
+}
+#profile-tab .vp-mode select {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 6px 28px 6px 12px;
+  cursor: pointer;
+}
+#profile-tab .vp-mode select:hover { border-color: var(--accent); }
+#profile-tab .vp-subtitle {
+  margin: 6px 0 14px;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+#profile-tab .vp-stats-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: baseline;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+#profile-tab .vp-stat { display: inline-flex; align-items: baseline; gap: 5px; }
+#profile-tab .vp-stat b {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
+}
+#profile-tab .vp-stat i {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+#profile-tab .vp-progress {
+  height: 3px;
+  margin-top: 10px;
+  background: var(--panel-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+#profile-tab .vp-progress .bar {
+  height: 100%;
+  background: var(--accent);
+  transition: width 240ms ease;
+}
+
+/* Sections (flat, no cards) */
+#profile-tab .vp-section {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+#profile-tab .vp-section:last-child { border-bottom: none; }
+#profile-tab .vp-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+#profile-tab .vp-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.95px;
+  color: var(--text-2);
+  margin: 0;
+}
+#profile-tab .vp-section-title::before { display: none; }
+#profile-tab .vp-action {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+#profile-tab .vp-action:hover { text-decoration: underline; }
+
+/* Mode template: muted preformatted */
+#profile-tab .vp-template {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-2);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+/* Live prompt chips inside flat section (override prior background) */
+#profile-tab #profile-prompt {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  max-height: none;
+  overflow: visible;
+}
+
+/* Vocab + auto-tracked chip rows */
+#profile-tab #profile-vocab-list,
+#profile-tab #profile-words {
+  background: transparent;
+  border: none;
+  padding: 0;
+  max-height: none;
+  overflow: visible;
+}
+#profile-tab #profile-words { max-height: 260px; overflow-y: auto; }
+
+/* Hide legacy hero/grid wrappers if any leftover */
+#profile-tab .profile-hero,
+#profile-tab .profile-grid,
+#profile-tab .profile-side,
+#profile-tab .profile-stats { display: none !important; }
