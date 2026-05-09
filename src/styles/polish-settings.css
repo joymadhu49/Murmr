@@ -387,3 +387,202 @@
 
 /* Fix: main content overlapped by fixed 44px topbar */
 .main { padding-top: 52px !important; padding-bottom: 16px !important; }
+
+/* ============================================================
+   Voice Profile — pro polish v2
+   ============================================================ */
+
+#profile-tab .profile-hero {
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(182, 155, 255, 0.18) 0%, transparent 55%),
+    linear-gradient(135deg, #16111e 0%, #1d1830 50%, #251c45 100%);
+  border: 1px solid rgba(182, 155, 255, 0.18);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 14px 32px -16px rgba(20, 12, 50, 0.6);
+  padding: 22px 24px !important;
+  position: relative;
+  overflow: hidden;
+}
+
+#profile-tab .profile-hero h3 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: #fff;
+}
+#profile-tab .profile-hero h3::before { display: none; }
+
+#profile-tab .profile-hero p {
+  color: rgba(216, 210, 238, 0.8);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+#profile-tab .profile-mode-badge {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+  align-items: stretch !important;
+  gap: 6px !important;
+}
+#profile-tab .profile-mode-badge .small {
+  font-size: 10px;
+  letter-spacing: 0.85px;
+  font-weight: 700;
+  color: rgba(216, 210, 238, 0.65);
+}
+#profile-tab .profile-mode-badge select {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 13px;
+  padding: 7px 30px 7px 12px;
+}
+#profile-tab .profile-mode-badge select:hover {
+  background: rgba(0, 0, 0, 0.4);
+  border-color: rgba(182, 155, 255, 0.35);
+}
+
+#profile-tab .profile-stats {
+  margin-top: 18px;
+  gap: 12px;
+}
+#profile-tab .profile-stat {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 10px 14px;
+  border-radius: 12px;
+  transition: 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+#profile-tab .profile-stat:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(182, 155, 255, 0.25);
+}
+#profile-tab .profile-stat .small,
+#profile-tab .profile-stat .muted.small {
+  font-size: 9.5px !important;
+  letter-spacing: 0.9px;
+  font-weight: 700;
+  color: rgba(216, 210, 238, 0.55) !important;
+  text-transform: uppercase;
+}
+#profile-tab .profile-stat .value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.4px;
+  margin-top: 2px;
+}
+
+#profile-tab .profile-hero .progress {
+  height: 4px;
+  margin-top: 14px;
+  background: rgba(0, 0, 0, 0.35);
+  border: none;
+}
+#profile-tab .profile-hero .progress > .bar {
+  background: linear-gradient(90deg, #b69bff 0%, #d4baff 100%);
+  box-shadow: 0 0 14px rgba(212, 186, 255, 0.55);
+}
+
+/* ---- profile-grid card refinements ---- */
+
+#profile-tab .profile-grid .card {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  transition: border-color 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+#profile-tab .profile-grid .card:hover {
+  border-color: rgba(182, 155, 255, 0.22);
+}
+
+#profile-tab .profile-prompt-card {
+  background: var(--panel);
+}
+#profile-tab .profile-prompt-card .prompt-preview {
+  background: #0a0a0e;
+  border: 1px solid #1a1a22;
+  font-size: 12.5px;
+  line-height: 1.65;
+  padding: 14px 16px;
+  color: #d8d2ee;
+}
+
+/* Mode pack empty state */
+#profile-tab .profile-side .card:nth-child(1) .prompt-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+  min-height: 60px;
+  padding: 16px;
+}
+
+/* Chip row tightening */
+#profile-tab .chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0;
+  align-content: flex-start;
+  line-height: 1.4;
+}
+#profile-tab .chip-row .vocab-chip {
+  margin: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+#profile-tab .chip-row .vocab-chip:hover {
+  border-color: rgba(182, 155, 255, 0.35);
+  background: rgba(182, 155, 255, 0.08);
+}
+#profile-tab .chip-row .vocab-chip .muted {
+  color: var(--muted);
+  font-size: 10.5px;
+  opacity: 0.75;
+  margin-left: 2px;
+}
+
+/* Custom vocab edit link as button */
+#profile-tab .profile-edit-link,
+#profile-vocab-edit {
+  background: rgba(182, 155, 255, 0.1);
+  border: 1px solid rgba(182, 155, 255, 0.22);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  transition: 140ms;
+}
+#profile-tab .profile-edit-link:hover,
+#profile-vocab-edit:hover {
+  background: rgba(182, 155, 255, 0.2);
+  border-color: rgba(182, 155, 255, 0.4);
+  text-decoration: none;
+}
+
+/* h3 align with edit link on right */
+#profile-tab .profile-side .card h3 {
+  font-size: 10px;
+  letter-spacing: 0.95px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border);
+}
+
+/* Top auto-tracked: scroll cap */
+#profile-words.chip-row {
+  max-height: 220px;
+  overflow-y: auto;
+}

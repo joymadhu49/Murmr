@@ -161,13 +161,20 @@ async function refreshHistory() {
 
 async function refreshStats() {
   const s = await invoke("get_stats");
-  statWords.textContent = fmtNumber(s.total_words);
-  statWpm.textContent = s.wpm;
-  statStreak.textContent = s.streak;
-  statWords2.textContent = s.total_words.toLocaleString();
-  statWpm2.textContent = s.wpm;
-  statStreak2.textContent = s.streak;
-  statSessions.textContent = s.sessions;
+  if (statWords) statWords.textContent = fmtNumber(s.total_words);
+  if (statWpm) statWpm.textContent = s.wpm;
+  if (statStreak) statStreak.textContent = s.streak;
+  if (statWords2) statWords2.textContent = s.total_words.toLocaleString();
+  if (statWpm2) statWpm2.textContent = s.wpm;
+  if (statStreak2) statStreak2.textContent = s.streak;
+  if (statSessions) statSessions.textContent = s.sessions;
+  // Topbar header chips
+  const hdrStreak = document.getElementById("hdr-streak");
+  const hdrWords = document.getElementById("hdr-words");
+  const hdrWpm = document.getElementById("hdr-wpm");
+  if (hdrStreak) hdrStreak.textContent = s.streak;
+  if (hdrWords) hdrWords.textContent = fmtNumber(s.total_words);
+  if (hdrWpm) hdrWpm.textContent = s.wpm;
   const profSize = s.voice_profile_size || 0;
   const pct = Math.min(100, Math.round((profSize / 880) * 100));
   profileBar.style.width = pct + "%";
@@ -183,7 +190,7 @@ async function refreshSettingsCard() {
   try {
     const s = await invoke("get_settings");
     const prov = s.provider === "groq" ? `Groq · ${s.groq_model}` : `Local · ${s.active_model}`;
-    providerInfo.textContent = `${prov} · lang=${s.language || "auto"}`;
+    if (providerInfo) providerInfo.textContent = `${prov} · lang=${s.language || "auto"}`;
     if (activeModeEl && !activeModeEl.options.length) {
       await populateModeDropdown(s);
     } else if (activeModeEl) {
@@ -652,6 +659,19 @@ window.addEventListener("DOMContentLoaded", async () => {
     b.addEventListener("click", () => setTab(b.dataset.tab));
   });
 
+  const setCollapsed = (on) => {
+    document.body.classList.toggle("sidebar-collapsed", on);
+    const expandBtn = document.getElementById("sidebar-expand");
+    if (expandBtn) expandBtn.hidden = !on;
+  };
+  const sidebarCollapse = document.getElementById("sidebar-collapse");
+  if (sidebarCollapse) {
+    sidebarCollapse.addEventListener("click", () => setCollapsed(true));
+  }
+  const sidebarExpand = document.getElementById("sidebar-expand");
+  if (sidebarExpand) {
+    sidebarExpand.addEventListener("click", () => setCollapsed(false));
+  }
   const topbarSettings = document.getElementById("topbar-settings");
   if (topbarSettings) {
     topbarSettings.addEventListener("click", () => setTab("settings"));
