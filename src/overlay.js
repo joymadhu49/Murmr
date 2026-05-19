@@ -16,6 +16,11 @@ idlePill.addEventListener("click", async () => {
   try { await invoke("start_recording"); } catch (e) { console.error(e); }
 });
 
+idlePill.addEventListener("dblclick", async (e) => {
+  e.stopPropagation();
+  try { await invoke("open_settings"); } catch (e) { console.error(e); }
+});
+
 stopBtn.addEventListener("click", async (e) => {
   e.stopPropagation();
   try { await invoke("stop_recording"); } catch (err) { console.error(err); }

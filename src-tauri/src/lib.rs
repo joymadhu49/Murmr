@@ -1080,13 +1080,13 @@ fn stop_inner(state: &AppState) -> Result<(String, u64, String, String), String>
     let sr = *sess.sample_rate.lock().unwrap();
     let ch = *sess.channels.lock().unwrap();
     let duration_ms = sess.started_at.elapsed().as_millis() as u64;
-    if duration_ms < 300 || raw.is_empty() {
+    if duration_ms < 150 || raw.is_empty() {
         return Err("too short".into());
     }
     let mut pcm = to_mono_16k(&raw, sr, ch);
     normalize_peak(&mut pcm);
     let pcm = trim_silence(&pcm, 16000);
-    if pcm.len() < 16000 / 4 {
+    if pcm.len() < 16000 / 8 {
         return Err("no speech detected".into());
     }
 
@@ -1151,11 +1151,13 @@ fn stop_inner(state: &AppState) -> Result<(String, u64, String, String), String>
         params.set_language(lang_opt);
     }
     state_w.full(params, &pcm).map_err(|e| e.to_string())?;
-    let n = state_w.full_n_segments().map_err(|e| e.to_string())?;
+    let n = state_w.full_n_segments();
     let mut out = String::new();
     for i in 0..n {
-        if let Ok(seg) = state_w.full_get_segment_text(i) {
-            out.push_str(&seg);
+        if let Some(seg) = state_w.get_segment(i) {
+            if let Ok(text) = seg.to_str() {
+                out.push_str(text);
+            }
         }
     }
     Ok((filter_hallucinations(out.trim()), duration_ms, "local".into(), model_id))
@@ -1222,10 +1224,33 @@ fn deliver_text(text: &str, auto_paste: bool) {
     if let Ok(mut cb) = arboard::Clipboard::new() {
         let _ = cb.set_text(text.to_string());
     }
-    if auto_paste {
-        if let Ok(mut enigo) = Enigo::new(&EnigoSettings::default()) {
-            let _ = enigo.text(text);
+    if !auto_paste {
+        return;
+    }
+    let on_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
+    if on_wayland {
+        // wtype: native Wayland typing, no portal permission needed
+        if std::process::Command::new("wtype")
+            .arg(text)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            return;
         }
+        // ydotool fallback (needs ydotoold daemon)
+        if std::process::Command::new("ydotool")
+            .args(["type", "--", text])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            return;
+        }
+    }
+    // X11 / last-resort fallback via enigo
+    if let Ok(mut enigo) = Enigo::new(&EnigoSettings::default()) {
+        let _ = enigo.text(text);
     }
 }
 
@@ -1271,7 +1296,7 @@ fn hide_hud(app: &AppHandle) {
 
 #[tauri::command]
 fn open_settings(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window("settings") {
+    if let Some(win) = app.get_webview_window("main") {
         let _ = win.show();
         let _ = win.set_focus();
     }
@@ -1299,10 +1324,10 @@ async fn stop_recording(app: AppHandle, state: State<'_, AppState>) -> Result<St
             let app2 = app.clone();
             let t = text.clone();
             thread::spawn(move || {
-                thread::sleep(Duration::from_millis(250));
-                deliver_text(&t, auto_paste);
-                thread::sleep(Duration::from_millis(800));
+                thread::sleep(Duration::from_millis(300)); // brief "done" flash
                 hide_hud(&app2);
+                thread::sleep(Duration::from_millis(500)); // let focus return
+                deliver_text(&t, auto_paste);
             });
             Ok(text)
         }
@@ -1345,14 +1370,65 @@ fn is_wayland() -> bool {
         || std::env::var_os("WAYLAND_DISPLAY").is_some()
 }
 
+fn do_stop(app: &AppHandle, state: &AppState) {
+    let _ = app.emit("rec-state", "transcribing");
+    let auto_paste = state.settings.lock().unwrap().auto_paste;
+    match stop_inner(state) {
+        Ok((text, dur, provider, model)) => {
+            record_history(&text, dur, &provider, &model);
+            let _ = app.emit("transcript", &text);
+            let _ = app.emit("history-changed", ());
+            let _ = app.emit("rec-state", "done");
+            let app2 = app.clone();
+            let t = text.clone();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(300)); // brief "done" flash
+                hide_hud(&app2);
+                thread::sleep(Duration::from_millis(500)); // let target window regain focus
+                deliver_text(&t, auto_paste);
+            });
+        }
+        Err(e) => {
+            let _ = app.emit("rec-error", &e);
+            let _ = app.emit("rec-state", "idle");
+            let app2 = app.clone();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(700));
+                hide_hud(&app2);
+            });
+        }
+    }
+}
+
 fn handle_hotkey(app: &AppHandle, pressed: bool) {
     let state = app.state::<AppState>();
     if pressed {
-        // Mark held; cancels any pending debounced release from X11 auto-repeat.
         state.hotkey_held.store(true, Ordering::SeqCst);
-        if state.session.lock().unwrap().is_some() {
+
+        // Check if already recording
+        let recording_ms = {
+            let sess = state.session.lock().unwrap();
+            sess.as_ref().map(|s| s.started_at.elapsed().as_millis() as u64)
+        };
+        if let Some(elapsed_ms) = recording_ms {
+            // On Wayland, the compositor may only fire Pressed, never Released.
+            // Treat a second press after 500 ms of recording as a toggle stop.
+            if elapsed_ms > 200 {
+                state.hotkey_held.store(false, Ordering::SeqCst);
+                // Invalidate any pending debounce thread from a prior Release event.
+                state.hotkey_release_seq.fetch_add(1, Ordering::SeqCst);
+                let app2 = app.clone();
+                thread::spawn(move || {
+                    let st = app2.state::<AppState>();
+                    if st.session.lock().unwrap().is_none() {
+                        return;
+                    }
+                    do_stop(&app2, &st);
+                });
+            }
             return;
         }
+
         let _ = start_inner(&state);
         show_hud(app, "recording");
     } else {
@@ -1379,28 +1455,88 @@ fn handle_hotkey(app: &AppHandle, pressed: bool) {
             if st.session.lock().unwrap().is_none() {
                 return;
             }
-            let _ = app2.emit("rec-state", "transcribing");
-            let auto_paste = st.settings.lock().unwrap().auto_paste;
-            match stop_inner(&st) {
-                Ok((text, dur, provider, model)) => {
-                    record_history(&text, dur, &provider, &model);
-                    let _ = app2.emit("transcript", &text);
-                    let _ = app2.emit("history-changed", ());
-                    let _ = app2.emit("rec-state", "done");
-                    thread::sleep(Duration::from_millis(250));
-                    deliver_text(&text, auto_paste);
-                    thread::sleep(Duration::from_millis(800));
-                    hide_hud(&app2);
-                }
-                Err(e) => {
-                    let _ = app2.emit("rec-error", &e);
-                    let _ = app2.emit("rec-state", "idle");
-                    thread::sleep(Duration::from_millis(700));
-                    hide_hud(&app2);
-                }
-            }
+            do_stop(&app2, &st);
         });
     }
+}
+
+/// Spawn a kernel-level evdev hotkey listener that works on any compositor,
+/// including Wayland (where X11 key grabs are blocked by GNOME 42+).
+#[cfg(target_os = "linux")]
+fn spawn_evdev_hotkey(app: AppHandle) {
+    use evdev::{Device, EventType, Key};
+
+    thread::spawn(move || {
+        // Find keyboard devices: must have Ctrl, Shift, and Space keys
+        let keyboards: Vec<Device> = evdev::enumerate()
+            .map(|(_, d)| d)
+            .filter(|d| {
+                d.supported_keys()
+                    .map(|k| k.contains(Key::KEY_LEFTCTRL) && k.contains(Key::KEY_SPACE))
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        if keyboards.is_empty() {
+            eprintln!("evdev: no keyboard found (is user in 'input' group?)");
+            return;
+        }
+
+        // Spawn one listener thread per keyboard device (handles multiple keyboards)
+        let mut handles = vec![];
+        for mut dev in keyboards {
+            let app2 = app.clone();
+            handles.push(thread::spawn(move || {
+                let mut ctrl = false;
+                let mut shift = false;
+                let mut hotkey_down = false;
+
+                loop {
+                    let events = match dev.fetch_events() {
+                        Ok(e) => e,
+                        Err(_) => {
+                            thread::sleep(Duration::from_millis(200));
+                            continue;
+                        }
+                    };
+                    for ev in events {
+                        if ev.event_type() != EventType::KEY {
+                            continue;
+                        }
+                        let key = Key::new(ev.code());
+                        let val = ev.value(); // 1=press, 0=release, 2=repeat
+
+                        match key {
+                            Key::KEY_LEFTCTRL | Key::KEY_RIGHTCTRL => ctrl = val != 0,
+                            Key::KEY_LEFTSHIFT | Key::KEY_RIGHTSHIFT => shift = val != 0,
+                            Key::KEY_SPACE if ctrl && shift => {
+                                if val == 1 && !hotkey_down {
+                                    hotkey_down = true;
+                                    handle_hotkey(&app2, true);
+                                } else if val == 0 && hotkey_down {
+                                    hotkey_down = false;
+                                    handle_hotkey(&app2, false);
+                                }
+                            }
+                            Key::KEY_F9 => {
+                                if val == 1 && !hotkey_down {
+                                    hotkey_down = true;
+                                    handle_hotkey(&app2, true);
+                                } else if val == 0 && hotkey_down {
+                                    hotkey_down = false;
+                                    handle_hotkey(&app2, false);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }));
+        }
+        for h in handles {
+            let _ = h.join();
+        }
+    });
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1457,6 +1593,19 @@ pub fn run() {
             }
             if let Some(hud) = app.get_webview_window("hud") {
                 let _ = hud.hide();
+            }
+            // Evdev-based global hotkey — works on Wayland regardless of compositor
+            #[cfg(target_os = "linux")]
+            spawn_evdev_hotkey(app.handle().clone());
+            // Close → hide so background hotkey keeps working
+            if let Some(win) = app.get_webview_window("main") {
+                let win2 = win.clone();
+                win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = win2.hide();
+                    }
+                });
             }
             Ok(())
         })
