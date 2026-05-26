@@ -84,6 +84,41 @@ struct CustomMode {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+struct StyleProfile {
+    #[serde(default = "default_style_tone")]
+    tone: String, // "casual" | "balanced" | "professional"
+    #[serde(default)]
+    use_emojis: bool,
+    #[serde(default)]
+    use_abbreviations: bool,
+    #[serde(default)]
+    custom_instructions: String,
+}
+
+impl Default for StyleProfile {
+    fn default() -> Self {
+        Self {
+            tone: default_style_tone(),
+            use_emojis: false,
+            use_abbreviations: false,
+            custom_instructions: String::new(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+struct StyleProfiles {
+    #[serde(default)]
+    personal: StyleProfile,
+    #[serde(default)]
+    work: StyleProfile,
+    #[serde(default)]
+    email: StyleProfile,
+    #[serde(default)]
+    other: StyleProfile,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 struct AppSettings {
     active_model: String,
     language: String,
@@ -106,6 +141,10 @@ struct AppSettings {
     smart_format_model: String,
     #[serde(default = "default_cleanup_level")]
     cleanup_level: String, // "none" | "light" | "medium" | "high"
+    #[serde(default)]
+    style_profiles: StyleProfiles,
+    #[serde(default = "default_active_style_profile")]
+    active_style_profile: String, // "none" | "personal" | "work" | "email" | "other"
     #[serde(default)]
     autostart: bool,
     #[serde(default = "default_hotkey")]
@@ -130,6 +169,12 @@ fn default_smart_format_model() -> String {
 fn default_cleanup_level() -> String {
     "light".into()
 }
+fn default_style_tone() -> String {
+    "balanced".into()
+}
+fn default_active_style_profile() -> String {
+    "none".into()
+}
 fn default_hotkey() -> String {
     "ctrl_shift_space".into()
 }
@@ -149,6 +194,8 @@ impl Default for AppSettings {
             smart_format: default_smart_format(),
             smart_format_model: default_smart_format_model(),
             cleanup_level: default_cleanup_level(),
+            style_profiles: StyleProfiles::default(),
+            active_style_profile: default_active_style_profile(),
             autostart: false,
             hotkey: default_hotkey(),
         }
@@ -1113,6 +1160,53 @@ const CLEANUP_MEDIUM_SYS: &str = "You are a skilled dictation editor. Polish the
 
 const CLEANUP_HIGH_SYS: &str = "You are a professional editor. Rewrite the speaker's raw speech transcript into polished, professional prose: fix all grammar and punctuation, eliminate all filler words and repetitions, restructure for maximum clarity and conciseness, and ensure a clean professional register. Preserve the speaker's intent but prioritize quality and polish over preserving exact phrasing. Reply with ONLY the rewritten text. No preamble, no quotes, no markdown.";
 
+fn active_style_profile<'a>(settings: &'a AppSettings) -> Option<(&'a str, &'a StyleProfile)> {
+    let key = settings.active_style_profile.as_str();
+    let p = match key {
+        "personal" => &settings.style_profiles.personal,
+        "work" => &settings.style_profiles.work,
+        "email" => &settings.style_profiles.email,
+        "other" => &settings.style_profiles.other,
+        _ => return None,
+    };
+    Some((key, p))
+}
+
+fn style_profile_addendum(key: &str, p: &StyleProfile) -> String {
+    let context = match key {
+        "personal" => "This dictation goes into a personal messenger (WhatsApp/Telegram/Discord/Instagram).",
+        "work" => "This dictation goes into a workplace messenger (Slack/Teams/LinkedIn).",
+        "email" => "This dictation becomes the body of an email.",
+        "other" => "This dictation goes into a general-purpose app.",
+        _ => "",
+    };
+    let tone = match p.tone.as_str() {
+        "casual" => "Use a casual, conversational tone — short sentences, contractions allowed, friendly register.",
+        "professional" => "Use a polished, professional tone — full sentences, proper register, no slang.",
+        _ => "Use a balanced, natural tone — neither overly formal nor overly casual.",
+    };
+    let emoji = if p.use_emojis {
+        " Emojis are welcome where they fit naturally — do not force them."
+    } else {
+        " Do not add emojis."
+    };
+    let abbrev = if p.use_abbreviations {
+        " Light shorthand is fine (e.g. \"btw\", \"fyi\", \"thx\")."
+    } else {
+        " Use full words, not shorthand."
+    };
+    let custom = p.custom_instructions.trim();
+    let custom_part = if custom.is_empty() {
+        String::new()
+    } else {
+        format!(" Additional user instructions: {}", custom)
+    };
+    format!(
+        " Context: {} {}{}{}{}",
+        context, tone, emoji, abbrev, custom_part
+    )
+}
+
 fn smart_format_extra(mode_id: &str) -> Option<&'static str> {
     match mode_id {
         "email" => Some("Context: this dictation will become email body text. Preserve professional register if present. Treat greetings (\"hi John\") and sign-offs (\"thanks\", \"best regards\") as their own line."),
@@ -1128,6 +1222,7 @@ fn smart_format_text(
     api_key: &str,
     model: &str,
     system_base: &str,
+    style_addendum: &str,
 ) -> Result<String, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -1140,6 +1235,9 @@ fn smart_format_text(
     if let Some(extra) = smart_format_extra(mode_id) {
         system.push(' ');
         system.push_str(extra);
+    }
+    if !style_addendum.is_empty() {
+        system.push_str(style_addendum);
     }
     let body = serde_json::json!({
         "model": model,
@@ -1324,12 +1422,17 @@ fn maybe_smart_format(raw: &str, settings: &AppSettings) -> String {
         "high" => CLEANUP_HIGH_SYS,
         _ => SMART_FORMAT_SYS_BASE, // "light" and any unknown
     };
+    let style_addendum = match active_style_profile(settings) {
+        Some((k, p)) => style_profile_addendum(k, p),
+        None => String::new(),
+    };
     match smart_format_text(
         raw,
         &settings.active_mode,
         &settings.groq_api_key,
         &settings.smart_format_model,
         system_base,
+        &style_addendum,
     ) {
         Ok(t) if !t.is_empty() => t,
         Ok(_) => raw.to_string(),
@@ -1600,6 +1703,53 @@ fn set_cleanup_level(state: State<'_, AppState>, level: String) -> Result<(), St
     let new = {
         let mut g = state.settings.lock().unwrap();
         g.cleanup_level = level;
+        g.clone()
+    };
+    save_settings(&new).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_style_profiles(state: State<'_, AppState>) -> StyleProfiles {
+    state.settings.lock().unwrap().style_profiles.clone()
+}
+
+#[tauri::command]
+fn set_style_profile(
+    state: State<'_, AppState>,
+    key: String,
+    profile: StyleProfile,
+) -> Result<(), String> {
+    let new = {
+        let mut g = state.settings.lock().unwrap();
+        match key.as_str() {
+            "personal" => g.style_profiles.personal = profile,
+            "work" => g.style_profiles.work = profile,
+            "email" => g.style_profiles.email = profile,
+            "other" => g.style_profiles.other = profile,
+            _ => return Err(format!("unknown style profile key: {}", key)),
+        }
+        g.clone()
+    };
+    save_settings(&new).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_active_style_profile(state: State<'_, AppState>) -> String {
+    state.settings.lock().unwrap().active_style_profile.clone()
+}
+
+#[tauri::command]
+fn set_active_style_profile(
+    state: State<'_, AppState>,
+    key: String,
+) -> Result<(), String> {
+    let valid = matches!(key.as_str(), "none" | "personal" | "work" | "email" | "other");
+    if !valid {
+        return Err(format!("invalid active style profile: {}", key));
+    }
+    let new = {
+        let mut g = state.settings.lock().unwrap();
+        g.active_style_profile = key;
         g.clone()
     };
     save_settings(&new).map_err(|e| e.to_string())
@@ -1981,6 +2131,10 @@ pub fn run() {
             is_wayland,
             get_cleanup_level,
             set_cleanup_level,
+            get_style_profiles,
+            set_style_profile,
+            get_active_style_profile,
+            set_active_style_profile,
             set_autostart,
             get_autostart,
             list_models,

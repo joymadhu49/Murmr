@@ -1034,14 +1034,190 @@ body.with-sidebar.sidebar-collapsed .main {
   border-radius: 8px;
 }
 
-/* Placeholder for non-Auto-Cleanup tabs */
-.style-coming {
-  padding: 48px 24px;
-  text-align: center;
-  color: var(--muted-2);
+/* Style profile form (Personal / Work / Email / Other) */
+.style-form {
+  margin: 18px 0 0;
+}
+.style-form-card {
+  padding: 4px 2px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.style-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.style-form-label {
   font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.style-form-label .muted {
+  font-weight: 500;
+}
+.style-form-active-row {
+  padding: 14px 16px;
+  background: var(--panel-2, #F7F5FF);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.style-form-applied .style-form-active-row {
+  background: #EFEAFF;
+  border-color: #C7B8FF;
+}
+
+/* Toggle switch */
+.style-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.style-toggle input { display: none; }
+.style-toggle-slot {
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--border);
+  position: relative;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.style-toggle-dot {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  transition: transform 0.15s;
+}
+.style-toggle input:checked + .style-toggle-slot {
+  background: #7B61FF;
+}
+.style-toggle input:checked + .style-toggle-slot .style-toggle-dot {
+  transform: translateX(16px);
+}
+.style-toggle-label {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* Segmented control */
+.style-segmented {
+  display: inline-flex;
+  background: var(--panel-2, #F4F2FA);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+  align-self: flex-start;
+}
+.style-seg {
+  appearance: none;
+  border: 0;
   background: transparent;
-  border: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 7px 16px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  font-family: inherit;
+}
+.style-seg:hover { color: var(--text); }
+.style-seg.active {
+  background: #fff;
+  color: #1F1B2E;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(20,16,40,0.10), 0 0 0 1px rgba(123,97,255,0.18) inset;
+}
+
+/* Toggles row */
+.style-form-toggles {
+  flex-direction: row;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.style-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+.style-check input {
+  width: 15px;
+  height: 15px;
+  accent-color: #7B61FF;
+}
+
+/* Textarea */
+.style-instr {
+  width: 100%;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  background: #fff;
+  color: var(--text);
+  min-height: 64px;
+}
+.style-instr:focus {
+  outline: none;
+  border-color: #B7A8FF;
+  box-shadow: 0 0 0 3px rgba(123, 97, 255, 0.12);
+}
+
+/* Preview box */
+.style-preview-box {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.style-preview-line {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 12px;
+  align-items: baseline;
+}
+.style-preview-tag {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-2);
+}
+.style-preview-text {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.style-preview-text.raw {
+  color: var(--muted);
+  font-style: italic;
+}
+.style-preview-text.styled {
+  font-family: Georgia, "Times New Roman", serif;
+}
+.style-preview-note {
+  margin-top: 2px;
 }
 
 @media (max-width: 900px) {
@@ -1050,4 +1226,5 @@ body.with-sidebar.sidebar-collapsed .main {
   .style-tab-btn { padding: 8px 10px 10px; font-size: 12px; }
   .banner-apps { display: none; }
   .style-banner-title, .style-banner-sub, .style-banner-note { max-width: 100%; }
+  .style-preview-line { grid-template-columns: 1fr; gap: 4px; }
 }
