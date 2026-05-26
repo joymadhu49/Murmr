@@ -357,172 +357,117 @@ async function refreshProfile() {
 let activeStyleSub = "cleanup";
 let styleFormsBuilt = false;
 
-const STYLE_PROFILE_LABELS = {
-  personal: { label: "personal messengers", sample: "hey um are we still on for coffee tomorrow at like three or should we push it back" },
-  work: { label: "workplace messengers", sample: "hey team uh quick update the deploy went out and uh metrics look good so far" },
-  email: { label: "email", sample: "hi sarah um wanted to follow up on the proposal we sent last week let me know if you have any questions" },
-  other: { label: "general apps", sample: "todo finish the slide deck draft outline and send to alex by friday" },
+const STYLE_VARIANTS = [
+  { id: "formal", title: "Formal.", sub: "Caps + Punctuation" },
+  { id: "casual", title: "Casual", sub: "Caps + Less punctuation" },
+  { id: "excited", title: "Excited!", sub: "More exclamations" },
+];
+
+// Per-profile preview content per variant.
+const STYLE_PREVIEW_CONTENT = {
+  personal: {
+    kind: "chat",
+    name: "John Doe",
+    time: "9:45 AM",
+    initial: "J",
+    body: {
+      formal: "Hey, if you're free, let's chat about the great results.",
+      casual: "Hey, if you're free, let's chat about the great results",
+      excited: "Hey, if you're free, let's chat about the great results!",
+    },
+  },
+  work: {
+    kind: "chat",
+    name: "John Doe",
+    time: "9:45 AM",
+    initial: "J",
+    body: {
+      formal: "Hey, if you're free, let's chat about the great results.",
+      casual: "Hey, if you're free, let's chat about the great results",
+      excited: "Hey, if you're free, let's chat about the great results!",
+    },
+  },
+  email: {
+    kind: "email",
+    to: "Alex Doe",
+    body: {
+      formal: "Hi Alex,\n\nIt was great talking with you today. Looking forward to our next chat.\n\nBest,\nMary",
+      casual: "Hi Alex, it was great talking with you today. Looking forward to our next chat.\n\nBest,\nMary",
+      excited: "Hi Alex,\n\nIt was great talking with you today. Looking forward to our next chat!\n\nBest,\nMary",
+    },
+  },
+  other: {
+    kind: "paragraph",
+    body: {
+      formal: "So far, I am enjoying the new workout routine.\n\nI am excited for tomorrow's workout, especially after a full night of rest.",
+      casual: "So far I am enjoying the new workout routine.\n\nI am excited for tomorrow's workout especially after a full night of rest.",
+      excited: "So far, I am enjoying the new workout routine.\n\nI am excited for tomorrow's workout, especially after a full night of rest!",
+    },
+  },
 };
 
-function styleFormTemplate(profileKey) {
-  return `
-    <div class="style-form-card">
-      <div class="style-form-row style-form-active-row">
-        <label class="style-toggle">
-          <input type="checkbox" data-style-field="active" />
-          <span class="style-toggle-slot"><span class="style-toggle-dot"></span></span>
-          <span class="style-toggle-label">Apply this style to my dictations</span>
-        </label>
+function renderPreviewBlock(profileKey, variantId) {
+  const pc = STYLE_PREVIEW_CONTENT[profileKey];
+  const body = pc.body[variantId] || "";
+  if (pc.kind === "chat") {
+    const lines = escapeHtml(body).split("\n").join("<br>");
+    return `
+      <div class="style-card-chat">
+        <div class="chat-avatar v-${variantId}">${escapeHtml(pc.initial)}</div>
+        <div class="chat-meta">${escapeHtml(pc.name)} <span class="chat-time">${escapeHtml(pc.time)}</span></div>
+        <div class="chat-body">${lines}</div>
       </div>
-
-      <div class="style-form-row">
-        <div class="style-form-label">Tone</div>
-        <div class="style-segmented" data-style-field="tone">
-          <button class="style-seg" data-value="casual">Casual</button>
-          <button class="style-seg" data-value="balanced">Balanced</button>
-          <button class="style-seg" data-value="professional">Professional</button>
-        </div>
-      </div>
-
-      <div class="style-form-row style-form-toggles">
-        <label class="style-check">
-          <input type="checkbox" data-style-field="use_emojis" />
-          <span>Use emojis where they fit</span>
-        </label>
-        <label class="style-check">
-          <input type="checkbox" data-style-field="use_abbreviations" />
-          <span>Allow shorthand (btw, fyi, thx)</span>
-        </label>
-      </div>
-
-      <div class="style-form-row">
-        <div class="style-form-label">Custom instructions <span class="muted small">(optional)</span></div>
-        <textarea class="style-instr" data-style-field="custom_instructions" rows="3"
-          placeholder="e.g. Keep it concise. Sign off as 'J'. Avoid exclamation points."></textarea>
-      </div>
-
-      <div class="style-form-row">
-        <div class="style-form-label">Preview</div>
-        <div class="style-preview-box">
-          <div class="style-preview-line"><span class="style-preview-tag">You said</span><span class="style-preview-text raw">${escapeHtml(STYLE_PROFILE_LABELS[profileKey].sample)}</span></div>
-          <div class="style-preview-line"><span class="style-preview-tag">MyVoice writes</span><span class="style-preview-text styled" data-style-preview></span></div>
-        </div>
-        <div class="muted small style-preview-note">Updates from your settings — not a live LLM call.</div>
-      </div>
-    </div>
-  `;
-}
-
-function computeStylePreview(profileKey, profile) {
-  const sample = STYLE_PROFILE_LABELS[profileKey].sample;
-  let words = sample.replace(/\s+/g, " ").trim().split(" ");
-  const fillers = new Set(["um", "uh", "like", "you", "know"]);
-  words = words.filter((w, i) => {
-    const low = w.toLowerCase();
-    if (low === "you" && words[i + 1] && words[i + 1].toLowerCase() === "know") return false;
-    if (low === "know" && i > 0 && words[i - 1].toLowerCase() === "you") return false;
-    return !fillers.has(low);
-  });
-  let s = words.join(" ");
-  s = s.charAt(0).toUpperCase() + s.slice(1);
-  s = s.replace(/\bi\b/g, "I");
-  // Capitalize name after greeting
-  s = s.replace(/^(Hi|Hey|Hello)\s+([a-z])/i, (_, g, c) => `${g} ${c.toUpperCase()}`);
-  if (!/[.!?]$/.test(s)) s += profile.tone === "casual" ? "?" : ".";
-
-  if (profile.tone === "casual") {
-    s = s.replace(/\byou are\b/gi, "you're").replace(/\bI am\b/g, "I'm");
+    `;
   }
-  if (profile.tone === "professional") {
-    s = s.replace(/\byou're\b/gi, "you are").replace(/\bI'm\b/g, "I am");
-    s = s.replace(/^Hey\b/i, "Hi");
+  if (pc.kind === "email") {
+    const para = escapeHtml(body).split(/\n\n+/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
+    return `
+      <div class="style-card-email">
+        <div class="email-to">To: ${escapeHtml(pc.to)}</div>
+        <div class="email-body">${para}</div>
+      </div>
+    `;
   }
-  if (profile.use_abbreviations) {
-    s = s.replace(/\bby the way\b/gi, "btw").replace(/\bfor your information\b/gi, "fyi");
-  }
-  if (profile.use_emojis) {
-    if (profileKey === "personal") s += " ☕";
-    else if (profileKey === "work") s += " ✅";
-    else if (profileKey === "email") s += " 📧";
-    else s += " ✍️";
-  }
-  return s;
+  // paragraph
+  const para = escapeHtml(body).split(/\n\n+/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
+  return `<div class="style-card-para">${para}</div>`;
 }
 
 function buildStyleForms() {
   if (styleFormsBuilt) return;
-  document.querySelectorAll(".style-form[data-profile]").forEach((host) => {
-    const key = host.dataset.profile;
-    host.innerHTML = styleFormTemplate(key);
-    wireStyleForm(host, key);
+  document.querySelectorAll(".style-card-grid[data-profile]").forEach((host) => {
+    const profileKey = host.dataset.profile;
+    host.innerHTML = STYLE_VARIANTS.map((v) => `
+      <button class="style-card" data-profile="${profileKey}" data-variant="${v.id}">
+        <h3 class="style-card-title">${escapeHtml(v.title)}</h3>
+        <p class="style-card-sub">${escapeHtml(v.sub)}</p>
+        <div class="style-card-preview">${renderPreviewBlock(profileKey, v.id)}</div>
+      </button>
+    `).join("");
+    host.querySelectorAll(".style-card").forEach((card) => {
+      card.addEventListener("click", () => onStyleCardClick(profileKey, card.dataset.variant));
+    });
   });
   styleFormsBuilt = true;
 }
 
-function wireStyleForm(host, key) {
-  host.querySelectorAll(".style-seg").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      host.querySelectorAll(".style-seg").forEach((b) => b.classList.toggle("active", b === btn));
-      saveStyleForm(key);
-    });
-  });
-  host.querySelector('[data-style-field="use_emojis"]').addEventListener("change", () => saveStyleForm(key));
-  host.querySelector('[data-style-field="use_abbreviations"]').addEventListener("change", () => saveStyleForm(key));
-  host.querySelector('[data-style-field="active"]').addEventListener("change", async (e) => {
-    const on = e.target.checked;
-    await invoke("set_active_style_profile", { key: on ? key : "none" });
-    syncActiveStyleAcrossForms(on ? key : "none");
-  });
-  const instr = host.querySelector('[data-style-field="custom_instructions"]');
-  let t = null;
-  instr.addEventListener("input", () => {
-    clearTimeout(t);
-    t = setTimeout(() => saveStyleForm(key), 350);
-  });
+async function onStyleCardClick(profileKey, variantId) {
+  const profile = { style: variantId };
+  await invoke("set_style_profile", { key: profileKey, profile });
+  await invoke("set_active_style_profile", { key: profileKey });
+  applyStyleSelections({ [profileKey]: profile }, profileKey, /*partial=*/true);
 }
 
-function readStyleForm(host) {
-  const tone = host.querySelector(".style-seg.active")?.dataset.value || "balanced";
-  return {
-    tone,
-    use_emojis: host.querySelector('[data-style-field="use_emojis"]').checked,
-    use_abbreviations: host.querySelector('[data-style-field="use_abbreviations"]').checked,
-    custom_instructions: host.querySelector('[data-style-field="custom_instructions"]').value || "",
-  };
-}
-
-async function saveStyleForm(key) {
-  const host = document.querySelector(`.style-form[data-profile="${key}"]`);
-  if (!host) return;
-  const profile = readStyleForm(host);
-  await invoke("set_style_profile", { key, profile });
-  updateStylePreview(host, key, profile);
-}
-
-function updateStylePreview(host, key, profile) {
-  const out = host.querySelector("[data-style-preview]");
-  if (out) out.textContent = computeStylePreview(key, profile);
-}
-
-function syncActiveStyleAcrossForms(activeKey) {
-  document.querySelectorAll(".style-form[data-profile]").forEach((host) => {
+function applyStyleSelections(profiles, activeKey, partial) {
+  document.querySelectorAll(".style-card-grid[data-profile]").forEach((host) => {
     const k = host.dataset.profile;
-    const cb = host.querySelector('[data-style-field="active"]');
-    if (cb) cb.checked = k === activeKey;
-    host.classList.toggle("style-form-applied", k === activeKey);
+    if (partial && !(k in profiles)) return;
+    const variant = (profiles[k] && profiles[k].style) || "formal";
+    host.querySelectorAll(".style-card").forEach((card) => {
+      card.classList.toggle("active", card.dataset.variant === variant);
+    });
+    host.classList.toggle("profile-active", k === activeKey);
   });
-}
-
-function applyStyleFormState(host, key, profile, activeKey) {
-  host.querySelectorAll(".style-seg").forEach((b) => {
-    b.classList.toggle("active", b.dataset.value === (profile.tone || "balanced"));
-  });
-  host.querySelector('[data-style-field="use_emojis"]').checked = !!profile.use_emojis;
-  host.querySelector('[data-style-field="use_abbreviations"]').checked = !!profile.use_abbreviations;
-  host.querySelector('[data-style-field="custom_instructions"]').value = profile.custom_instructions || "";
-  host.querySelector('[data-style-field="active"]').checked = key === activeKey;
-  host.classList.toggle("style-form-applied", key === activeKey);
-  updateStylePreview(host, key, profile);
 }
 
 function setStyleSubTab(name) {
@@ -550,10 +495,7 @@ async function refreshStyleTab() {
   if (noteEl) {
     noteEl.hidden = !!(settings.groq_api_key && settings.groq_api_key.trim());
   }
-  for (const key of ["personal", "work", "email", "other"]) {
-    const host = document.querySelector(`.style-form[data-profile="${key}"]`);
-    if (host) applyStyleFormState(host, key, profiles[key] || {}, activeKey);
-  }
+  applyStyleSelections(profiles || {}, activeKey, false);
   setStyleSubTab(activeStyleSub);
 }
 

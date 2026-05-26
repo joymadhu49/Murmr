@@ -85,23 +85,14 @@ struct CustomMode {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct StyleProfile {
-    #[serde(default = "default_style_tone")]
-    tone: String, // "casual" | "balanced" | "professional"
-    #[serde(default)]
-    use_emojis: bool,
-    #[serde(default)]
-    use_abbreviations: bool,
-    #[serde(default)]
-    custom_instructions: String,
+    #[serde(default = "default_style_variant")]
+    style: String, // "formal" | "casual" | "excited"
 }
 
 impl Default for StyleProfile {
     fn default() -> Self {
         Self {
-            tone: default_style_tone(),
-            use_emojis: false,
-            use_abbreviations: false,
-            custom_instructions: String::new(),
+            style: default_style_variant(),
         }
     }
 }
@@ -169,8 +160,8 @@ fn default_smart_format_model() -> String {
 fn default_cleanup_level() -> String {
     "light".into()
 }
-fn default_style_tone() -> String {
-    "balanced".into()
+fn default_style_variant() -> String {
+    "formal".into()
 }
 fn default_active_style_profile() -> String {
     "none".into()
@@ -1180,31 +1171,12 @@ fn style_profile_addendum(key: &str, p: &StyleProfile) -> String {
         "other" => "This dictation goes into a general-purpose app.",
         _ => "",
     };
-    let tone = match p.tone.as_str() {
-        "casual" => "Use a casual, conversational tone — short sentences, contractions allowed, friendly register.",
-        "professional" => "Use a polished, professional tone — full sentences, proper register, no slang.",
-        _ => "Use a balanced, natural tone — neither overly formal nor overly casual.",
+    let variant = match p.style.as_str() {
+        "casual" => "Variant: Casual — keep capitalization but use light punctuation; relaxed conversational register.",
+        "excited" => "Variant: Excited — energetic register; favor exclamation points where natural; upbeat tone.",
+        _ => "Variant: Formal — proper capitalization and full punctuation; clean, structured sentences.",
     };
-    let emoji = if p.use_emojis {
-        " Emojis are welcome where they fit naturally — do not force them."
-    } else {
-        " Do not add emojis."
-    };
-    let abbrev = if p.use_abbreviations {
-        " Light shorthand is fine (e.g. \"btw\", \"fyi\", \"thx\")."
-    } else {
-        " Use full words, not shorthand."
-    };
-    let custom = p.custom_instructions.trim();
-    let custom_part = if custom.is_empty() {
-        String::new()
-    } else {
-        format!(" Additional user instructions: {}", custom)
-    };
-    format!(
-        " Context: {} {}{}{}{}",
-        context, tone, emoji, abbrev, custom_part
-    )
+    format!(" Context: {} {}", context, variant)
 }
 
 fn smart_format_extra(mode_id: &str) -> Option<&'static str> {
