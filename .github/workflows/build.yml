@@ -55,7 +55,8 @@ jobs:
             libasound2-dev \
             libclang-dev \
             libevdev-dev \
-            libx11-dev
+            libx11-dev \
+            libxdo-dev
 
       # ── Windows: LLVM needed by whisper-rs bindgen ────────────────────────
       - name: Install LLVM (Windows)
