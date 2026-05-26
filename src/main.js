@@ -440,7 +440,10 @@ function setTab(t) {
   setVis("right-col", t === "home");
   if (t === "profile") refreshProfile();
   if (t === "settings") refreshSettings();
-  if (t === "style") refreshStyleTab();
+  if (t === "style") {
+    setStyleSubTab(activeStyleSub); // sync — no flash before async invoke resolves
+    refreshStyleTab();
+  }
 }
 
 // ============ Settings tab logic (was settings.js) ============
