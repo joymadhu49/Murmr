@@ -258,38 +258,110 @@
         </div>
 
         <div id="style-tab" style="display:none;">
-          <div class="style-banner">
-            <h2 class="style-banner-title">Style</h2>
-            <p class="style-banner-sub">Choose how your voice is cleaned up after transcription.</p>
-          </div>
+          <h1 class="style-page-title">Style</h1>
 
-          <section class="style-section">
-            <h3 class="style-section-title">Auto Cleanup</h3>
-            <p class="style-section-desc">Controls how much your transcription is polished by AI before delivery.</p>
+          <nav class="style-tabs" id="style-tabs">
+            <button class="style-tab-btn" data-style-tab="personal">Personal messages</button>
+            <button class="style-tab-btn" data-style-tab="work">Work messages</button>
+            <button class="style-tab-btn" data-style-tab="email">Email</button>
+            <button class="style-tab-btn" data-style-tab="other">Other</button>
+            <button class="style-tab-btn active" data-style-tab="cleanup">Auto Cleanup <span class="beta-pill">Beta</span></button>
+          </nav>
+
+          <!-- Auto Cleanup sub-tab -->
+          <div class="style-sub" data-sub="cleanup">
+            <div class="style-banner cleanup-banner">
+              <h2 class="style-banner-title">Auto Cleanup applies to all your dictations</h2>
+              <p class="style-banner-sub">Choose the level of cleanup that's automatically applied every time, across all apps.</p>
+              <p class="style-banner-note">Note your original dictation is never lost. Just go to the three dots next to a recent dictation in the Home tab, then click "Undo AI edit."</p>
+            </div>
+
             <div class="cleanup-grid" id="cleanup-grid">
               <button class="cleanup-card" data-level="none">
                 <span class="cleanup-card-name">None</span>
-                <span class="cleanup-card-desc">Raw transcription, exactly as spoken. No changes.</span>
-                <span class="cleanup-card-preview">"um so i was thinking like maybe we should uh do the thing"</span>
+                <span class="cleanup-card-desc">Transcribes exactly what you said, including mistakes</span>
+                <span class="cleanup-card-preview">hey joey, we still on for coffee or? I think we maybe should leave earlier to make it there in time there might um be traffic. What are you thinking?</span>
               </button>
               <button class="cleanup-card" data-level="light">
                 <span class="cleanup-card-name">Light</span>
-                <span class="cleanup-card-desc">Fix punctuation, casing, and obvious filler words.</span>
-                <span class="cleanup-card-preview">"I was thinking maybe we should do the thing."</span>
+                <span class="cleanup-card-desc">Cleans up filler words and grammar</span>
+                <span class="cleanup-card-preview">Hey Joey, are we still on for coffee? I think we should leave earlier to make it there in time. There might be traffic. What are you thinking?</span>
               </button>
               <button class="cleanup-card" data-level="medium">
                 <span class="cleanup-card-name">Medium</span>
-                <span class="cleanup-card-desc">Improve clarity and flow while preserving your voice.</span>
-                <span class="cleanup-card-preview">"I was thinking we should do the thing."</span>
+                <span class="cleanup-card-desc">Edits for clarity and conciseness</span>
+                <span class="cleanup-card-preview">Hey Joey, are we still on for coffee? We should leave earlier; there might be traffic. What do you think?</span>
               </button>
               <button class="cleanup-card" data-level="high">
                 <span class="cleanup-card-name">High</span>
-                <span class="cleanup-card-desc">Full professional polish — restructures for maximum quality.</span>
-                <span class="cleanup-card-preview">"I think we should move forward with the plan."</span>
+                <span class="cleanup-card-desc">Rewrites for brevity and polish</span>
+                <span class="cleanup-card-preview">Hey Joey, are we still on for coffee? Let's leave early to beat traffic. What do you think?</span>
               </button>
             </div>
             <p class="style-requires-groq" id="style-groq-note">Cleanup levels above None require a Groq API key in Settings.</p>
-          </section>
+          </div>
+
+          <!-- Personal messages sub-tab -->
+          <div class="style-sub" data-sub="personal" hidden>
+            <div class="style-banner banner-personal">
+              <h2 class="style-banner-title">This style applies in personal messengers</h2>
+              <p class="style-banner-sub">Style formatting only applies in English. More languages coming soon.</p>
+              <div class="banner-apps">
+                <span class="app-dot" title="WhatsApp">W</span>
+                <span class="app-dot" title="Telegram">T</span>
+                <span class="app-dot" title="Discord">D</span>
+                <span class="app-dot" title="Instagram">IG</span>
+                <span class="app-dot dot-plus">+</span>
+              </div>
+            </div>
+            <div class="style-coming">Coming soon — per-app style profiles.</div>
+          </div>
+
+          <!-- Work messages sub-tab -->
+          <div class="style-sub" data-sub="work" hidden>
+            <div class="style-banner banner-work">
+              <h2 class="style-banner-title">This style applies in workplace messengers</h2>
+              <p class="style-banner-sub">Style formatting only applies in English. More languages coming soon.</p>
+              <div class="banner-apps">
+                <span class="app-dot" title="Slack">S</span>
+                <span class="app-dot" title="Teams">T</span>
+                <span class="app-dot" title="LinkedIn">in</span>
+                <span class="app-dot dot-plus">+</span>
+              </div>
+            </div>
+            <div class="style-coming">Coming soon — per-app style profiles.</div>
+          </div>
+
+          <!-- Email sub-tab -->
+          <div class="style-sub" data-sub="email" hidden>
+            <div class="style-banner banner-email">
+              <h2 class="style-banner-title">This style applies in all major email apps</h2>
+              <p class="style-banner-sub">Style formatting only applies in English. More languages coming soon.</p>
+              <div class="banner-apps">
+                <span class="app-dot" title="Gmail">G</span>
+                <span class="app-dot" title="Spark">S</span>
+                <span class="app-dot" title="Outlook">O</span>
+                <span class="app-dot" title="Mail">M</span>
+                <span class="app-dot dot-plus">+</span>
+              </div>
+            </div>
+            <div class="style-coming">Coming soon — per-app style profiles.</div>
+          </div>
+
+          <!-- Other sub-tab -->
+          <div class="style-sub" data-sub="other" hidden>
+            <div class="style-banner banner-other">
+              <h2 class="style-banner-title">This style applies in all other apps</h2>
+              <p class="style-banner-sub">Style formatting only applies in English. More languages coming soon.</p>
+              <div class="banner-apps">
+                <span class="app-dot" title="Notes">N</span>
+                <span class="app-dot" title="ChatGPT">AI</span>
+                <span class="app-dot" title="Stickies">S</span>
+                <span class="app-dot dot-plus">+</span>
+              </div>
+            </div>
+            <div class="style-coming">Coming soon — per-app style profiles.</div>
+          </div>
         </div>
       </div>
 

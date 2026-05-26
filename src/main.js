@@ -354,6 +354,18 @@ async function refreshProfile() {
   }
 }
 
+let activeStyleSub = "cleanup";
+
+function setStyleSubTab(name) {
+  activeStyleSub = name;
+  document.querySelectorAll(".style-tab-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.styleTab === name);
+  });
+  document.querySelectorAll(".style-sub").forEach((s) => {
+    s.hidden = s.dataset.sub !== name;
+  });
+}
+
 async function refreshStyleTab() {
   const level = await invoke("get_cleanup_level");
   document.querySelectorAll(".cleanup-card").forEach((card) => {
@@ -364,6 +376,7 @@ async function refreshStyleTab() {
     const settings = await invoke("get_settings");
     noteEl.hidden = !!(settings.groq_api_key && settings.groq_api_key.trim());
   }
+  setStyleSubTab(activeStyleSub);
 }
 
 async function refreshAll() {
@@ -759,6 +772,11 @@ window.addEventListener("DOMContentLoaded", async () => {
         c.classList.toggle("active", c.dataset.level === level);
       });
     });
+  });
+
+  // Style tab — sub-tab nav (Personal / Work / Email / Other / Auto Cleanup)
+  document.querySelectorAll(".style-tab-btn").forEach((b) => {
+    b.addEventListener("click", () => setStyleSubTab(b.dataset.styleTab));
   });
 
   const setCollapsed = (on) => {
