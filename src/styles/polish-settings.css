@@ -693,7 +693,7 @@
    Voice Profile — minimal Wispr-style (single column, no cards)
    ============================================================ */
 #profile-tab {
-  display: flex !important;
+  display: flex;
   flex-direction: column;
   gap: 0;
   max-width: 760px;
@@ -735,7 +735,8 @@
   letter-spacing: 0.8px;
   color: var(--text-2);
 }
-#profile-tab .vp-mode select {
+#profile-tab .vp-mode select,
+#profile-tab .vp-mode-select {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -745,7 +746,8 @@
   padding: 6px 28px 6px 12px;
   cursor: pointer;
 }
-#profile-tab .vp-mode select:hover { border-color: var(--accent); }
+#profile-tab .vp-mode select:hover,
+#profile-tab .vp-mode-select:hover { border-color: var(--accent); }
 #profile-tab .vp-subtitle {
   margin: 6px 0 14px;
   font-size: 13px;
@@ -861,3 +863,39 @@
 #profile-tab .profile-grid,
 #profile-tab .profile-side,
 #profile-tab .profile-stats { display: none !important; }
+
+/* Inline option labels — simple, no uppercase tracking */
+#settings-tab .opt-label {
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Settings: tighter card padding, no h3::before bullet */
+#settings-tab .card h3::before { display: none !important; }
+#settings-tab .card { padding: 16px 18px; }
+#settings-tab .card h3 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--text-2);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+#settings-tab .field { margin-bottom: 12px; }
+#settings-tab .field:last-child { margin-bottom: 0; }
+#settings-tab .field label { font-size: 12px; color: var(--text-2); margin-bottom: 4px; display: block; }
+#settings-tab .field input[type="checkbox"] + label { margin-bottom: 0; display: inline; }
+#settings-tab .hotkey-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+#settings-tab .hotkey-row .kbd {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-family: ui-monospace, Menlo, monospace;
+  color: var(--text);
+}

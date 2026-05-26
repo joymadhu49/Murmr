@@ -2,6 +2,14 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const tauriWindow = window.__TAURI__?.window;
 
+// Platform class — used for platform-specific CSS (topbar padding, etc.)
+(function applyPlatform() {
+  const ua = navigator.userAgent.toLowerCase();
+  const plat = navigator.platform.toLowerCase();
+  const isMacOS = plat.includes("mac") || ua.includes("mac os x");
+  document.body.classList.add(isMacOS ? "platform-mac" : "platform-linux");
+})();
+
 // JS drag fallback — invokes startDragging on mousedown over drag regions.
 // Tauri 2's data-tauri-drag-region works natively for most elements but
 // can fail with sticky/fixed positioning on macOS. This catches stragglers.
@@ -43,12 +51,15 @@ let activeTab = "home";
 let modelsEl, langEl, autoPasteEl, settingsStatusEl;
 let providerInputs, groqSection, groqKeyEl, groqModelEl, groqStatusEl, groqTestBtn;
 let activeModeEl, customVocabEl, customModesListEl, addCustomModeBtn, promptPreviewEl;
+let smartFormatEl, smartFormatModelEl, autostartEl;
 let builtinModesCache = null;
 let downloading = new Map();
 
 function setRecording(on) {
   recording = on;
-  btn.textContent = on ? "Stop & transcribe" : "Start recording";
+  if (btn) btn.textContent = on ? "Stop & transcribe" : "Start recording";
+  const cancel = document.getElementById("cancel-rec");
+  if (cancel) cancel.hidden = !on;
 }
 
 function fmtNumber(n) {
@@ -199,7 +210,7 @@ async function refreshStats() {
   if (hdrWords) hdrWords.textContent = fmtNumber(s.total_words);
   if (hdrWpm) hdrWpm.textContent = s.wpm;
   const profSize = s.voice_profile_size || 0;
-  const pct = Math.min(100, Math.round((profSize / 880) * 100));
+  const pct = Math.min(100, Math.round((profSize / 1024) * 100));
   profileBar.style.width = pct + "%";
   profileStatus.textContent = profSize > 0
     ? `Tracking ${profSize} chars of personalized vocabulary`
@@ -249,9 +260,9 @@ async function refreshProfile() {
   }
 
   const sizeEl = document.getElementById("prof-stat-size");
-  if (sizeEl) sizeEl.textContent = `${prompt.length} / 880`;
+  if (sizeEl) sizeEl.textContent = `${prompt.length} / 1024`;
   const bar = document.getElementById("prof-bar");
-  if (bar) bar.style.width = Math.min(100, Math.round((prompt.length / 880) * 100)) + "%";
+  if (bar) bar.style.width = Math.min(100, Math.round((prompt.length / 1024) * 100)) + "%";
 
   const vocabLines = (settings.custom_vocab || "")
     .split("\n").map((l) => l.trim()).filter(Boolean);
@@ -343,6 +354,18 @@ async function refreshProfile() {
   }
 }
 
+async function refreshStyleTab() {
+  const level = await invoke("get_cleanup_level");
+  document.querySelectorAll(".cleanup-card").forEach((card) => {
+    card.classList.toggle("active", card.dataset.level === level);
+  });
+  const noteEl = document.getElementById("style-groq-note");
+  if (noteEl) {
+    const settings = await invoke("get_settings");
+    noteEl.hidden = !!(settings.groq_api_key && settings.groq_api_key.trim());
+  }
+}
+
 async function refreshAll() {
   await Promise.all([refreshHistory(), refreshStats(), refreshSettingsCard()]);
 }
@@ -385,14 +408,26 @@ function setTab(t) {
   document.querySelectorAll(".nav-btn[data-tab]").forEach((b) => {
     b.classList.toggle("active", b.dataset.tab === t);
   });
-  document.getElementById("home-tab").style.display = t === "home" ? "" : "none";
-  document.getElementById("stats-tab").style.display = t === "stats" ? "" : "none";
-  document.getElementById("profile-tab").style.display = t === "profile" ? "" : "none";
-  document.getElementById("settings-tab").style.display = t === "settings" ? "" : "none";
+  const setVis = (id, active) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (active) {
+      el.style.removeProperty("display");
+    } else {
+      // !important so it beats any CSS `display: ... !important` rule
+      el.style.setProperty("display", "none", "important");
+    }
+  };
+  setVis("home-tab", t === "home");
+  setVis("stats-tab", t === "stats");
+  setVis("profile-tab", t === "profile");
+  setVis("settings-tab", t === "settings");
+  setVis("style-tab", t === "style");
   document.querySelector(".main").classList.toggle("full", t !== "home");
-  document.getElementById("right-col").style.display = t === "home" ? "" : "none";
+  setVis("right-col", t === "home");
   if (t === "profile") refreshProfile();
   if (t === "settings") refreshSettings();
+  if (t === "style") refreshStyleTab();
 }
 
 // ============ Settings tab logic (was settings.js) ============
@@ -447,11 +482,27 @@ async function refreshSettings() {
   groqSection.style.display = (s.provider === "groq") ? "block" : "none";
 
   if (customVocabEl) customVocabEl.value = s.custom_vocab || "";
+  if (smartFormatEl) smartFormatEl.checked = !!s.smart_format;
+  if (smartFormatModelEl) smartFormatModelEl.value = s.smart_format_model || "llama-3.1-8b-instant";
+  if (autostartEl) {
+    try {
+      const actual = await invoke("get_autostart");
+      autostartEl.checked = !!actual;
+    } catch {
+      autostartEl.checked = !!s.autostart;
+    }
+  }
   await populateModeDropdown(s);
   renderCustomModes(s.custom_modes || []);
   await refreshPromptPreview();
 
   await refreshModels();
+
+  const macRow = document.getElementById("mac-hotkey-inline");
+  if (macRow) {
+    const isMac = navigator.platform.toLowerCase().includes("mac") || navigator.userAgent.toLowerCase().includes("mac");
+    macRow.style.display = isMac ? "" : "none";
+  }
 }
 
 async function populateModeDropdown(s) {
@@ -560,6 +611,8 @@ async function saveBehavior() {
   s.groq_model = groqModelEl.value;
   if (customVocabEl) s.custom_vocab = customVocabEl.value;
   if (activeModeEl) s.active_mode = activeModeEl.value || "notes";
+  if (smartFormatEl) s.smart_format = smartFormatEl.checked;
+  if (smartFormatModelEl) s.smart_format_model = smartFormatModelEl.value || "llama-3.1-8b-instant";
   if (customModesListEl) {
     const rows = customModesListEl.querySelectorAll(".custom-mode-row");
     s.custom_modes = [...rows].map((row) => ({
@@ -574,6 +627,20 @@ async function saveBehavior() {
   await refreshSettingsCard();
   await refreshStats();
   await refreshPromptPreview();
+}
+
+async function onAutostartToggle() {
+  if (!autostartEl) return;
+  try {
+    const enabled = await invoke("set_autostart", { enable: autostartEl.checked });
+    autostartEl.checked = !!enabled;
+    if (settingsStatusEl) {
+      settingsStatusEl.textContent = enabled ? "Autostart enabled." : "Autostart disabled.";
+    }
+  } catch (e) {
+    if (settingsStatusEl) settingsStatusEl.textContent = "Autostart error: " + e;
+    autostartEl.checked = !autostartEl.checked;
+  }
 }
 
 async function testGroq() {
@@ -640,6 +707,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   customModesListEl = document.querySelector("#custom-modes-list");
   addCustomModeBtn = document.querySelector("#add-custom-mode");
   promptPreviewEl = document.querySelector("#prompt-preview");
+  smartFormatEl = document.querySelector("#smart-format");
+  smartFormatModelEl = document.querySelector("#smart-format-model");
+  autostartEl = document.querySelector("#autostart");
   if (activeModeEl) {
     activeModeEl.addEventListener("change", saveBehavior);
   }
@@ -680,6 +750,17 @@ window.addEventListener("DOMContentLoaded", async () => {
     b.addEventListener("click", () => setTab(b.dataset.tab));
   });
 
+  // Style tab — cleanup level card selection
+  document.querySelectorAll(".cleanup-card").forEach((card) => {
+    card.addEventListener("click", async () => {
+      const level = card.dataset.level;
+      await invoke("set_cleanup_level", { level });
+      document.querySelectorAll(".cleanup-card").forEach((c) => {
+        c.classList.toggle("active", c.dataset.level === level);
+      });
+    });
+  });
+
   const setCollapsed = (on) => {
     document.body.classList.toggle("sidebar-collapsed", on);
     const expandBtn = document.getElementById("sidebar-expand");
@@ -705,6 +786,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   groqKeyEl.addEventListener("blur", saveBehavior);
   groqModelEl.addEventListener("change", saveBehavior);
   groqTestBtn.addEventListener("click", testGroq);
+  if (smartFormatEl) smartFormatEl.addEventListener("change", saveBehavior);
+  if (smartFormatModelEl) smartFormatModelEl.addEventListener("change", saveBehavior);
+  if (autostartEl) autostartEl.addEventListener("change", onAutostartToggle);
   document.querySelector("#clear-history").addEventListener("click", clearHistoryAction);
 
   await listen("rec-state", (e) => {
@@ -745,5 +829,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     await refreshModels();
   });
 
+  setTab("home");
   await refreshAll();
 });

@@ -39,16 +39,10 @@
             <span class="value" id="hdr-wpm">0</span><span class="label">WPM</span>
           </span>
         </div>
-        <button class="topbar-btn has-notif" title="Notifications" aria-label="Notifications">
+        <button class="topbar-btn account" id="topbar-settings" title="Settings" aria-label="Settings">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
-            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
-          </svg>
-        </button>
-        <button class="topbar-btn account" id="topbar-settings" title="Account / Settings" aria-label="Account">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="8" r="4"/>
-            <path d="M4 21a8 8 0 0 1 16 0"/>
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
           </svg>
         </button>
       </div>
@@ -78,6 +72,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 14a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v4a4 4 0 0 0 4 4Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
         <span class="nav-label">Voice profile</span>
       </button>
+      <button class="nav-btn" data-tab="style">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+        <span class="nav-label">Style</span>
+      </button>
 
       <div class="spacer"></div>
 
@@ -91,29 +89,18 @@
 
     <main class="main" data-tauri-drag-region>
       <div class="col">
-        <div class="welcome-header">
-          <div class="welcome-title" id="welcome-title">Welcome back</div>
-        </div>
-
         <div id="home-tab">
           <div class="hero-card" id="hero-card">
             <button class="hero-collapse" id="hero-toggle" title="Collapse" aria-label="Collapse">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 9 18 15"/></svg>
             </button>
-            <h2><em>Hold</em> the hotkey, speak, release.</h2>
-            <p>Dictation runs locally on Whisper or via Groq cloud. Auto-pastes into the focused window and copies to clipboard.</p>
+            <h2>Hold. Speak. Release.</h2>
             <div class="actions">
               <button class="pill-btn" id="rec">Start recording</button>
-              <button class="pill-btn ghost" id="cancel-rec">Cancel</button>
               <span class="row kbd-hints">
-                <span class="kbd">⌃ Ctrl</span>
-                <span>+</span>
-                <span class="kbd">⇧ Shift</span>
-                <span>+</span>
-                <span class="kbd">Space</span>
-                <span style="opacity:0.6;">or</span>
-                <span class="kbd">F9</span>
+                <span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">Space</span>
               </span>
+              <button class="pill-btn ghost" id="cancel-rec" hidden>Cancel</button>
             </div>
           </div>
           <div id="status"></div>
@@ -138,107 +125,77 @@
           <header class="vp-header">
             <div class="vp-title-row">
               <h2 class="vp-title">Voice profile</h2>
-              <div class="vp-mode">
-                <span class="vp-mode-label">Active mode</span>
-                <select id="profile-active-mode"></select>
-              </div>
+              <select id="profile-active-mode" class="vp-mode-select" aria-label="Active mode"></select>
             </div>
-            <p class="vp-subtitle">Bias prompt sent before every transcription. Switch mode to match what you're doing.</p>
-            <div class="vp-stats-line">
-              <span class="vp-stat"><b id="prof-stat-size">0 / 880</b><i>prompt</i></span>
-              <span class="vp-stat"><b id="prof-stat-vocab">0</b><i>custom</i></span>
-              <span class="vp-stat"><b id="prof-stat-auto">0</b><i>auto</i></span>
-              <span class="vp-stat"><b id="prof-stat-sessions">0</b><i>dictations</i></span>
-            </div>
-            <div class="vp-progress"><div class="bar" id="prof-bar" style="width:5%"></div></div>
           </header>
 
           <section class="vp-section">
             <div class="vp-section-head">
-              <h3 class="vp-section-title">Live prompt</h3>
+              <h3 class="vp-section-title">Your terms</h3>
+              <a class="vp-action" id="profile-vocab-edit">Edit</a>
             </div>
-            <div id="profile-prompt"></div>
+            <div id="profile-vocab-list" class="chip-row"></div>
           </section>
 
           <section class="vp-section">
             <div class="vp-section-head">
-              <h3 class="vp-section-title">Mode template</h3>
+              <h3 class="vp-section-title">Learned from you</h3>
             </div>
-            <div id="profile-mode-pack" class="vp-template">—</div>
+            <div id="profile-words" class="chip-row"></div>
           </section>
 
-          <section class="vp-section">
-            <div class="vp-section-head">
-              <h3 class="vp-section-title">Custom vocabulary</h3>
-              <a class="vp-action" id="profile-vocab-edit">Edit →</a>
-            </div>
-            <div id="profile-vocab-list" class="chip-row">No custom terms yet.</div>
-          </section>
-
-          <section class="vp-section">
-            <div class="vp-section-head">
-              <h3 class="vp-section-title">Top auto-tracked</h3>
-            </div>
-            <div id="profile-words" class="chip-row">(empty)</div>
-          </section>
+          <div id="profile-prompt" hidden></div>
+          <div id="profile-mode-pack" hidden></div>
         </div>
 
         <div id="settings-tab" style="display:none;">
           <div class="card">
             <h3>Hotkey</h3>
             <div class="hotkey-row">
-              <span class="label">Push to talk:</span>
-              <span class="kbd">⌃ Ctrl</span><span>+</span><span class="kbd">⇧ Shift</span><span>+</span><span class="kbd">Space</span>
-              <span class="muted small">or</span>
-              <span class="kbd">⌃ Ctrl</span><span>+</span><span class="kbd">⌥ Alt</span><span>+</span><span class="kbd">Space</span>
-              <span class="muted small">or</span>
-              <span class="kbd">Super</span><span>+</span><span class="kbd">Space</span>
+              <span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">Space</span>
               <span class="muted small">or</span>
               <span class="kbd">F9</span>
+              <span class="muted small" id="mac-hotkey-inline" style="display:none;">· macOS: hold ⌥ Right Option</span>
             </div>
-            <div class="muted small" style="margin-top:8px;">Hold to record. Release to transcribe + auto-paste. On Ubuntu/GNOME, Ctrl+Shift+Space is often grabbed by IBus — use F9 or Ctrl+Alt+Space if the primary doesn't fire.</div>
           </div>
 
-          <div class="card" style="margin-top:18px;">
-            <h3>Transcription provider</h3>
+          <div class="card" style="margin-top:14px;">
+            <h3>Transcription</h3>
             <div class="field">
-              <label>Provider</label>
               <div class="row">
                 <label class="row" style="gap:6px;">
                   <input type="radio" name="provider" value="local" />
-                  <span>Local Whisper (offline, private)</span>
+                  <span>Local Whisper</span>
                 </label>
                 <label class="row" style="gap:6px;">
                   <input type="radio" name="provider" value="groq" />
-                  <span>Groq Cloud (whisper-large-v3, fastest + most accurate)</span>
+                  <span>Groq Cloud</span>
                 </label>
               </div>
             </div>
             <div id="groq-section" style="display:none;">
               <div class="field">
-                <label>Groq API key</label>
+                <label>API key</label>
                 <div class="row">
-                  <input id="groq-key" type="password" placeholder="gsk_..." style="flex:1;min-width:280px;" autocomplete="off" />
-                  <button id="groq-key-toggle" class="btn" type="button" title="Show/hide">Show</button>
-                  <button id="groq-test" class="btn">Test key</button>
+                  <input id="groq-key" type="password" placeholder="gsk_..." style="flex:1;min-width:240px;" autocomplete="off" />
+                  <button id="groq-key-toggle" class="btn" type="button">Show</button>
+                  <button id="groq-test" class="btn">Test</button>
                 </div>
-                <div class="muted small">Get one free at <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a>. Stored locally in settings.json.</div>
               </div>
               <div class="field">
-                <label>Groq model</label>
+                <label>Model</label>
                 <select id="groq-model"></select>
-                <div class="muted small">Turbo = fastest. v3 = most accurate. distil-en = English-only, smallest latency.</div>
               </div>
               <div id="groq-status" class="muted small"></div>
             </div>
           </div>
 
-          <div class="card" style="margin-top:18px;">
+          <div class="card" style="margin-top:14px;">
             <h3>Behavior</h3>
             <div class="field">
               <label>Language</label>
               <select id="lang">
-                <option value="auto">Auto detect (multilingual model only)</option>
+                <option value="auto">Auto</option>
                 <option value="en">English</option>
                 <option value="es">Spanish</option>
                 <option value="fr">French</option>
@@ -253,47 +210,86 @@
                 <option value="ar">Arabic</option>
                 <option value="it">Italian</option>
               </select>
-              <div class="muted small">English-only models ignore this and force English.</div>
             </div>
             <div class="field row" style="align-items:center;">
               <input id="auto-paste" type="checkbox" />
-              <label for="auto-paste" style="margin:0;text-transform:none;letter-spacing:0;font-size:14px;color:var(--text);font-weight:500;">Auto-paste transcript into focused window (also copies to clipboard)</label>
+              <label for="auto-paste" class="opt-label">Auto-paste into focused window</label>
+            </div>
+            <div class="field row" style="align-items:center;">
+              <input id="autostart" type="checkbox" />
+              <label for="autostart" class="opt-label">Launch on login</label>
+            </div>
+            <div class="field row" style="align-items:center;">
+              <input id="smart-format" type="checkbox" />
+              <label for="smart-format" class="opt-label">AI polish (punctuation, fillers, casing)</label>
+            </div>
+            <div class="field" id="smart-format-model-wrap">
+              <label>Polish model</label>
+              <select id="smart-format-model">
+                <option value="llama-3.1-8b-instant">Fast (8B)</option>
+                <option value="llama-3.3-70b-versatile">Accurate (70B)</option>
+              </select>
             </div>
           </div>
 
-          <div class="card" style="margin-top:18px;">
-            <h3>Voice profile</h3>
+          <div class="card" style="margin-top:14px;">
+            <h3>Vocabulary</h3>
             <div class="field">
-              <label for="custom-vocab">Custom vocabulary</label>
-              <textarea id="custom-vocab" rows="6" placeholder="One per line. Names, acronyms, jargon, phrases…&#10;e.g. Joy Madhu&#10;MyVoice&#10;whisper.cpp&#10;Tauri" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;"></textarea>
-              <div class="muted small">Always sent to the recognizer to bias toward these terms. Casing preserved.</div>
+              <textarea id="custom-vocab" rows="5" placeholder="One per line — names, jargon, acronyms" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;"></textarea>
             </div>
             <div class="field">
-              <label>Custom context modes</label>
+              <label>Modes</label>
               <div id="custom-modes-list"></div>
-              <button id="add-custom-mode" class="btn" type="button" style="margin-top:8px;">+ Add custom mode</button>
-              <div class="muted small" style="margin-top:6px;">Built-in: AI prompt, Email, Code/tech, Notes. Add your own (e.g. Medical, Legal) — switch from the right-side dropdown.</div>
+              <button id="add-custom-mode" class="btn" type="button" style="margin-top:8px;">+ Add mode</button>
             </div>
-            <div class="field">
-              <label>Live prompt preview</label>
-              <div id="prompt-preview" style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--muted);background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:10px;max-height:140px;overflow:auto;-webkit-user-select:text;user-select:text;">(empty)</div>
-              <div class="muted small">What gets sent as the Whisper / Groq prompt right now.</div>
-            </div>
+            <div id="prompt-preview" hidden></div>
           </div>
 
-          <div class="card" style="margin-top:18px;">
+          <div class="card" style="margin-top:14px;">
             <h3>Local models</h3>
             <div id="models" class="model-list"></div>
-            <div id="settings-status" class="status-line" style="margin-top:12px;"></div>
+            <div id="settings-status" class="status-line" style="margin-top:10px;"></div>
           </div>
 
-          <div class="card" style="margin-top:18px;">
-            <h3>History</h3>
-            <div class="row">
-              <button class="btn danger" id="clear-history">Clear all history</button>
-              <span class="muted small">Removes voice profile + stats. Cannot be undone.</span>
-            </div>
+          <div class="card" style="margin-top:14px;">
+            <h3>Danger zone</h3>
+            <button class="btn danger" id="clear-history">Clear history</button>
           </div>
+        </div>
+
+        <div id="style-tab" style="display:none;">
+          <div class="style-banner">
+            <h2 class="style-banner-title">Style</h2>
+            <p class="style-banner-sub">Choose how your voice is cleaned up after transcription.</p>
+          </div>
+
+          <section class="style-section">
+            <h3 class="style-section-title">Auto Cleanup</h3>
+            <p class="style-section-desc">Controls how much your transcription is polished by AI before delivery.</p>
+            <div class="cleanup-grid" id="cleanup-grid">
+              <button class="cleanup-card" data-level="none">
+                <span class="cleanup-card-name">None</span>
+                <span class="cleanup-card-desc">Raw transcription, exactly as spoken. No changes.</span>
+                <span class="cleanup-card-preview">"um so i was thinking like maybe we should uh do the thing"</span>
+              </button>
+              <button class="cleanup-card" data-level="light">
+                <span class="cleanup-card-name">Light</span>
+                <span class="cleanup-card-desc">Fix punctuation, casing, and obvious filler words.</span>
+                <span class="cleanup-card-preview">"I was thinking maybe we should do the thing."</span>
+              </button>
+              <button class="cleanup-card" data-level="medium">
+                <span class="cleanup-card-name">Medium</span>
+                <span class="cleanup-card-desc">Improve clarity and flow while preserving your voice.</span>
+                <span class="cleanup-card-preview">"I was thinking we should do the thing."</span>
+              </button>
+              <button class="cleanup-card" data-level="high">
+                <span class="cleanup-card-name">High</span>
+                <span class="cleanup-card-desc">Full professional polish — restructures for maximum quality.</span>
+                <span class="cleanup-card-preview">"I think we should move forward with the plan."</span>
+              </button>
+            </div>
+            <p class="style-requires-groq" id="style-groq-note">Cleanup levels above None require a Groq API key in Settings.</p>
+          </section>
         </div>
       </div>
 

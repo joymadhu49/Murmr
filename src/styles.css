@@ -244,17 +244,8 @@ a:hover { text-decoration: underline; }
   }
 }
 
-/* Subtle ambient glow behind content on wide screens — fills empty fullscreen */
-body.with-sidebar::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(800px 500px at 12% 10%, rgba(107, 78, 240, 0.10), transparent 60%),
-    radial-gradient(700px 500px at 92% 92%, rgba(94, 47, 134, 0.10), transparent 60%);
-  z-index: -1;
-}
+/* Ambient glow disabled — Wispr-clean flat background */
+body.with-sidebar::before { content: none; }
 
 .col { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; height: 100%; }
 
