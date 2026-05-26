@@ -1,0 +1,110 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            args: '--bundles deb,appimage'
+          - platform: macos-latest
+            args: '--target universal-apple-darwin --bundles dmg'
+          - platform: windows-latest
+            args: '--bundles msi,nsis'
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # ── Linux system libraries ─────────────────────────────────────────────
+      - name: Install Linux deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libasound2-dev \
+            libclang-dev \
+            libevdev-dev \
+            libx11-dev
+
+      # ── Windows: LLVM needed by whisper-rs bindgen ────────────────────────
+      - name: Install LLVM (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: choco install llvm -y
+
+      - name: Set LIBCLANG_PATH (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install npm deps
+        run: npm install
+
+      # ── Tauri build (CI — no release) ─────────────────────────────────────
+      - name: Build (CI)
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: ${{ matrix.args }}
+
+      # ── Tauri build + GitHub Release (on tag push) ────────────────────────
+      - name: Build & Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional macOS codesigning — add these secrets to enable:
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: MyVoice ${{ github.ref_name }}
+          releaseBody: |
+            ## Download
+
+            | Platform | Installer |
+            |----------|-----------|
+            | **Linux** | `.deb` (Debian/Ubuntu) · `.AppImage` (portable) |
+            | **macOS** | `.dmg` Universal (Intel + Apple Silicon) |
+            | **Windows** | `.msi` · `.exe` (NSIS) |
+
+            > macOS: if Gatekeeper blocks the app, right-click → Open.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
