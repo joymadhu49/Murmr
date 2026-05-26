@@ -880,33 +880,16 @@ body.with-sidebar.sidebar-collapsed .main {
   color: #fff;
   min-height: 110px;
 }
-.cleanup-banner {
-  background:
-    radial-gradient(ellipse at 80% 30%, rgba(98,80,140,0.55) 0%, transparent 55%),
-    radial-gradient(ellipse at 30% 90%, rgba(60,45,90,0.7) 0%, transparent 60%),
-    linear-gradient(135deg, #1f1a2e 0%, #2a2440 50%, #14101e 100%);
-  min-height: 140px;
-}
-.banner-personal {
+.cleanup-banner,
+.banner-personal,
+.banner-work,
+.banner-email,
+.banner-other {
   background:
     radial-gradient(ellipse at 75% 40%, rgba(120,90,140,0.5) 0%, transparent 60%),
     linear-gradient(135deg, #2a1f2e 0%, #1f1a2e 60%, #14101e 100%);
 }
-.banner-work {
-  background:
-    radial-gradient(ellipse at 70% 35%, rgba(90,110,90,0.5) 0%, transparent 60%),
-    linear-gradient(135deg, #1f2a26 0%, #1a1f2a 60%, #10141e 100%);
-}
-.banner-email {
-  background:
-    radial-gradient(ellipse at 70% 40%, rgba(100,90,110,0.5) 0%, transparent 60%),
-    linear-gradient(135deg, #251f2a 0%, #1a1820 60%, #100e16 100%);
-}
-.banner-other {
-  background:
-    radial-gradient(ellipse at 70% 40%, rgba(90,105,130,0.5) 0%, transparent 60%),
-    linear-gradient(135deg, #1f2530 0%, #181c26 60%, #0e1118 100%);
-}
+.cleanup-banner { min-height: 140px; }
 .style-banner-title {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 22px;
