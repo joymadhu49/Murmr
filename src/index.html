@@ -169,52 +169,21 @@
           </div>
 
           <div class="card" style="margin-top:14px;">
-            <h3>Transcription</h3>
+            <h3>Smart-format (OpenRouter)</h3>
+            <p class="muted small" style="margin-top:0;">Transcription runs 100% locally via Whisper. OpenRouter handles cleanup, polishing, and style only.</p>
             <div class="field">
+              <label>OpenRouter API key</label>
               <div class="row">
-                <label class="row" style="gap:6px;">
-                  <input type="radio" name="provider" value="local" />
-                  <span>Local Whisper</span>
-                </label>
-                <label class="row" style="gap:6px;">
-                  <input type="radio" name="provider" value="cloud" />
-                  <span>Cloud (Groq / OpenAI / OpenRouter)</span>
-                </label>
+                <input id="or-key" type="password" placeholder="sk-or-v1-..." style="flex:1;min-width:240px;" autocomplete="off" />
+                <button id="or-key-toggle" class="btn" type="button">Show</button>
+                <button id="or-test" class="btn">Test</button>
               </div>
+              <div id="or-status" class="muted small"></div>
             </div>
-            <div id="cloud-section" style="display:none;">
-              <div class="field">
-                <label>API base URL</label>
-                <div class="row">
-                  <input id="cloud-base-url" type="text" placeholder="https://api.groq.com/openai/v1" style="flex:1;min-width:240px;" />
-                  <select id="cloud-preset" style="min-width:140px;">
-                    <option value="">Preset…</option>
-                    <option value="https://api.groq.com/openai/v1">Groq (fastest)</option>
-                    <option value="https://api.openai.com/v1">OpenAI</option>
-                    <option value="https://openrouter.ai/api/v1">OpenRouter</option>
-                  </select>
-                </div>
-                <div class="muted small">Any OpenAI-compatible endpoint. Groq is fastest (Whisper at 228x realtime).</div>
-              </div>
-              <div class="field">
-                <label>API key</label>
-                <div class="row">
-                  <input id="cloud-key" type="password" placeholder="gsk_..." style="flex:1;min-width:240px;" autocomplete="off" />
-                  <button id="cloud-key-toggle" class="btn" type="button">Show</button>
-                  <button id="cloud-test" class="btn">Test</button>
-                </div>
-                <div id="cloud-status" class="muted small"></div>
-              </div>
-              <div class="field">
-                <label>Speech-to-text model</label>
-                <input id="cloud-stt-model" type="text" placeholder="whisper-large-v3-turbo" />
-                <div class="muted small">Groq: <code>whisper-large-v3-turbo</code>, <code>whisper-large-v3</code> · OpenAI: <code>whisper-1</code> · OpenRouter: <code>openai/whisper-1</code></div>
-              </div>
-              <div class="field">
-                <label>Smart-format chat model</label>
-                <input id="cloud-chat-model" type="text" placeholder="llama-3.1-8b-instant" />
-                <div class="muted small">Groq: <code>llama-3.1-8b-instant</code> · OpenAI: <code>gpt-4o-mini</code> · OpenRouter: <code>meta-llama/llama-3.1-8b-instruct</code></div>
-              </div>
+            <div class="field">
+              <label>Chat model (for cleanup)</label>
+              <input id="or-chat-model" type="text" placeholder="meta-llama/llama-3.1-8b-instruct" />
+              <div class="muted small">Examples: <code>meta-llama/llama-3.1-8b-instruct</code>, <code>openai/gpt-4o-mini</code>, <code>anthropic/claude-3.5-haiku</code>.</div>
             </div>
           </div>
 
@@ -320,7 +289,7 @@
                 <span class="cleanup-card-preview">Hey Joey, are we still on for coffee? Let's leave early to beat traffic. What do you think?</span>
               </button>
             </div>
-            <p class="style-requires-groq" id="style-groq-note">Cleanup levels above None require a Cloud API key in Settings.</p>
+            <p class="style-requires-groq" id="style-groq-note">Cleanup levels above None require an OpenRouter API key in Settings.</p>
           </div>
 
           <!-- Personal messages sub-tab -->

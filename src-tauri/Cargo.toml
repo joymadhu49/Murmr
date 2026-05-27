@@ -1,6 +1,6 @@
 [package]
 name = "myvoice"
-version = "0.6.0"
+version = "0.6.1"
 description = "Privacy-first voice dictation"
 authors = ["you"]
 edition = "2021"
@@ -21,7 +21,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 cpal = "0.15"
 whisper-rs = "0.16"
-hound = "3.5"
 dirs = "5"
 ureq = { version = "2", features = ["tls", "json"] }
 anyhow = "1"

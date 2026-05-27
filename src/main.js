@@ -49,9 +49,7 @@ let activeTab = "home";
 
 // Settings tab elements
 let modelsEl, langEl, autoPasteEl, settingsStatusEl;
-let providerInputs;
-let cloudSection, cloudBaseUrlEl, cloudKeyEl, cloudStatusEl, cloudTestBtn;
-let cloudSttModelEl, cloudChatModelEl, cloudPresetEl;
+let orKeyEl, orStatusEl, orTestBtn, orChatModelEl;
 let activeModeEl, customVocabEl, customModesListEl, addCustomModeBtn, promptPreviewEl;
 let smartFormatEl, autostartEl;
 let builtinModesCache = null;
@@ -225,7 +223,7 @@ async function refreshStats() {
 async function refreshSettingsCard() {
   try {
     const s = await invoke("get_settings");
-    const prov = (s.provider === "cloud" || s.provider === "openrouter") ? `Cloud · ${s.stt_model || s.active_stt_model || ""}` : `Local · ${s.active_model}`;
+    const prov = `Local · ${s.active_model}`;
     if (providerInfo) providerInfo.textContent = `${prov} · lang=${s.language || "auto"}`;
     if (activeModeEl && !activeModeEl.options.length) {
       await populateModeDropdown(s);
@@ -495,8 +493,7 @@ async function refreshStyleTab() {
   });
   const noteEl = document.getElementById("style-groq-note");
   if (noteEl) {
-    const key = settings.api_key || settings.openrouter_api_key || "";
-    noteEl.hidden = !!key.trim();
+    noteEl.hidden = !!(settings.api_key && settings.api_key.trim());
   }
   applyStyleSelections(profiles || {}, activeKey, false);
   setStyleSubTab(activeStyleSub);
@@ -611,12 +608,8 @@ async function refreshSettings() {
   const s = await invoke("get_settings");
   langEl.value = s.language || "auto";
   autoPasteEl.checked = !!s.auto_paste;
-  providerInputs.forEach((r) => (r.checked = r.value === (s.provider || "local")));
-  cloudBaseUrlEl.value = s.api_base_url || "https://api.groq.com/openai/v1";
-  cloudKeyEl.value = s.api_key || s.openrouter_api_key || "";
-  cloudSttModelEl.value = s.stt_model || s.active_stt_model || "whisper-large-v3-turbo";
-  cloudChatModelEl.value = s.chat_model || s.active_chat_model || "llama-3.1-8b-instant";
-  cloudSection.style.display = (s.provider === "cloud" || s.provider === "openrouter") ? "block" : "none";
+  orKeyEl.value = s.api_key || s.openrouter_api_key || "";
+  orChatModelEl.value = s.chat_model || s.active_chat_model || "meta-llama/llama-3.1-8b-instruct";
 
   if (customVocabEl) customVocabEl.value = s.custom_vocab || "";
   if (smartFormatEl) smartFormatEl.checked = !!s.smart_format;
@@ -742,11 +735,8 @@ async function saveBehavior() {
   const s = await invoke("get_settings");
   s.language = langEl.value;
   s.auto_paste = autoPasteEl.checked;
-  s.provider = [...providerInputs].find((r) => r.checked)?.value || "local";
-  s.api_base_url = cloudBaseUrlEl.value.trim() || "https://api.groq.com/openai/v1";
-  s.api_key = cloudKeyEl.value.trim();
-  s.stt_model = cloudSttModelEl.value.trim() || "whisper-large-v3-turbo";
-  s.chat_model = cloudChatModelEl.value.trim() || "llama-3.1-8b-instant";
+  s.api_key = orKeyEl.value.trim();
+  s.chat_model = orChatModelEl.value.trim() || "meta-llama/llama-3.1-8b-instruct";
   if (customVocabEl) s.custom_vocab = customVocabEl.value;
   if (activeModeEl) s.active_mode = activeModeEl.value || "notes";
   if (smartFormatEl) s.smart_format = smartFormatEl.checked;
@@ -759,7 +749,6 @@ async function saveBehavior() {
     }));
   }
   await invoke("update_settings", { settings: s });
-  cloudSection.style.display = (s.provider === "cloud" || s.provider === "openrouter") ? "block" : "none";
   if (settingsStatusEl) settingsStatusEl.textContent = "Settings saved.";
   await refreshSettingsCard();
   await refreshStats();
@@ -780,18 +769,15 @@ async function onAutostartToggle() {
   }
 }
 
-async function testCloud() {
-  cloudStatusEl.textContent = "Testing…";
+async function testOpenRouter() {
+  orStatusEl.textContent = "Testing…";
   try {
-    const msg = await invoke("test_cloud", {
-      baseUrl: cloudBaseUrlEl.value.trim() || "https://api.groq.com/openai/v1",
-      apiKey: cloudKeyEl.value.trim(),
-    });
-    cloudStatusEl.textContent = msg;
-    cloudStatusEl.style.color = "var(--good)";
+    const msg = await invoke("test_openrouter", { apiKey: orKeyEl.value.trim() });
+    orStatusEl.textContent = msg;
+    orStatusEl.style.color = "var(--good)";
   } catch (e) {
-    cloudStatusEl.textContent = "Failed: " + e;
-    cloudStatusEl.style.color = "var(--bad)";
+    orStatusEl.textContent = "Failed: " + e;
+    orStatusEl.style.color = "var(--bad)";
   }
 }
 
@@ -836,15 +822,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   langEl = document.querySelector("#lang");
   autoPasteEl = document.querySelector("#auto-paste");
   settingsStatusEl = document.querySelector("#settings-status");
-  providerInputs = document.querySelectorAll('input[name="provider"]');
-  cloudSection = document.querySelector("#cloud-section");
-  cloudBaseUrlEl = document.querySelector("#cloud-base-url");
-  cloudKeyEl = document.querySelector("#cloud-key");
-  cloudStatusEl = document.querySelector("#cloud-status");
-  cloudTestBtn = document.querySelector("#cloud-test");
-  cloudSttModelEl = document.querySelector("#cloud-stt-model");
-  cloudChatModelEl = document.querySelector("#cloud-chat-model");
-  cloudPresetEl = document.querySelector("#cloud-preset");
+  orKeyEl = document.querySelector("#or-key");
+  orStatusEl = document.querySelector("#or-status");
+  orTestBtn = document.querySelector("#or-test");
+  orChatModelEl = document.querySelector("#or-chat-model");
   activeModeEl = document.querySelector("#active-mode");
   customVocabEl = document.querySelector("#custom-vocab");
   customModesListEl = document.querySelector("#custom-modes-list");
@@ -908,40 +889,20 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (addCustomModeBtn) {
     addCustomModeBtn.addEventListener("click", addCustomMode);
   }
-  const cloudKeyToggle = document.querySelector("#cloud-key-toggle");
-  if (cloudKeyToggle) {
-    cloudKeyToggle.addEventListener("click", () => {
-      const isPwd = cloudKeyEl.type === "password";
-      cloudKeyEl.type = isPwd ? "text" : "password";
-      cloudKeyToggle.textContent = isPwd ? "Hide" : "Show";
+  const orKeyToggle = document.querySelector("#or-key-toggle");
+  if (orKeyToggle) {
+    orKeyToggle.addEventListener("click", () => {
+      const isPwd = orKeyEl.type === "password";
+      orKeyEl.type = isPwd ? "text" : "password";
+      orKeyToggle.textContent = isPwd ? "Hide" : "Show";
     });
   }
-  if (cloudTestBtn) cloudTestBtn.addEventListener("click", testCloud);
-  if (cloudPresetEl) {
-    cloudPresetEl.addEventListener("change", () => {
-      const v = cloudPresetEl.value;
-      if (!v) return;
-      cloudBaseUrlEl.value = v;
-      if (v.includes("groq.com")) {
-        cloudSttModelEl.value = "whisper-large-v3-turbo";
-        cloudChatModelEl.value = "llama-3.1-8b-instant";
-      } else if (v.includes("openai.com")) {
-        cloudSttModelEl.value = "whisper-1";
-        cloudChatModelEl.value = "gpt-4o-mini";
-      } else if (v.includes("openrouter.ai")) {
-        cloudSttModelEl.value = "openai/whisper-1";
-        cloudChatModelEl.value = "meta-llama/llama-3.1-8b-instruct";
-      }
-      saveBehavior();
-      cloudPresetEl.value = "";
-    });
-  }
-  [cloudBaseUrlEl, cloudKeyEl, cloudSttModelEl, cloudChatModelEl].forEach((el) => {
+  if (orTestBtn) orTestBtn.addEventListener("click", testOpenRouter);
+  [orKeyEl, orChatModelEl].forEach((el) => {
     if (!el) return;
     el.addEventListener("change", saveBehavior);
     el.addEventListener("blur", saveBehavior);
   });
-  providerInputs.forEach((r) => r.addEventListener("change", saveBehavior));
 
   btn.addEventListener("click", toggle);
   const cancelBtn = document.querySelector("#cancel-rec");
