@@ -115,17 +115,15 @@ struct AppSettings {
     language: String,
     auto_paste: bool,
     #[serde(default = "default_provider")]
-    provider: String, // "local" | "openrouter"
-    #[serde(default)]
-    openrouter_api_key: String,
-    #[serde(default = "default_stt_models")]
-    stt_models: Vec<ModelEntry>,
-    #[serde(default = "default_active_stt_model")]
-    active_stt_model: String,
-    #[serde(default = "default_chat_models")]
-    chat_models: Vec<ModelEntry>,
-    #[serde(default = "default_active_chat_model")]
-    active_chat_model: String,
+    provider: String, // "local" | "cloud"
+    #[serde(default = "default_api_base_url")]
+    api_base_url: String,
+    #[serde(default, alias = "openrouter_api_key")]
+    api_key: String,
+    #[serde(default = "default_stt_model", alias = "active_stt_model")]
+    stt_model: String,
+    #[serde(default = "default_chat_model", alias = "active_chat_model")]
+    chat_model: String,
     #[serde(default)]
     custom_vocab: String,
     #[serde(default = "default_active_mode")]
@@ -151,25 +149,14 @@ struct AppSettings {
 fn default_provider() -> String {
     "local".into()
 }
-fn default_stt_models() -> Vec<ModelEntry> {
-    vec![
-        ModelEntry { id: "openai/whisper-large-v3-turbo".into(), label: "Whisper Large v3 Turbo".into() },
-        ModelEntry { id: "openai/whisper-large-v3".into(),       label: "Whisper Large v3".into() },
-        ModelEntry { id: "openai/whisper-1".into(),              label: "Whisper-1".into() },
-    ]
+fn default_api_base_url() -> String {
+    "https://api.groq.com/openai/v1".into()
 }
-fn default_active_stt_model() -> String {
-    "openai/whisper-large-v3-turbo".into()
+fn default_stt_model() -> String {
+    "whisper-large-v3-turbo".into()
 }
-fn default_chat_models() -> Vec<ModelEntry> {
-    vec![
-        ModelEntry { id: "meta-llama/llama-3.1-8b-instruct".into(), label: "Llama 3.1 8B Instruct".into() },
-        ModelEntry { id: "openai/gpt-4o-mini".into(),               label: "GPT-4o mini".into() },
-        ModelEntry { id: "anthropic/claude-3.5-haiku".into(),       label: "Claude 3.5 Haiku".into() },
-    ]
-}
-fn default_active_chat_model() -> String {
-    "meta-llama/llama-3.1-8b-instruct".into()
+fn default_chat_model() -> String {
+    "llama-3.1-8b-instant".into()
 }
 fn default_active_mode() -> String {
     "notes".into()
@@ -197,11 +184,10 @@ impl Default for AppSettings {
             language: "en".into(),
             auto_paste: true,
             provider: default_provider(),
-            openrouter_api_key: String::new(),
-            stt_models: default_stt_models(),
-            active_stt_model: default_active_stt_model(),
-            chat_models: default_chat_models(),
-            active_chat_model: default_active_chat_model(),
+            api_base_url: default_api_base_url(),
+            api_key: String::new(),
+            stt_model: default_stt_model(),
+            chat_model: default_chat_model(),
             custom_vocab: String::new(),
             active_mode: default_active_mode(),
             custom_modes: Vec::new(),
@@ -244,13 +230,6 @@ const BUILTIN_MODES: &[BuiltinMode] = &[
         pack: "Common terms: function, variable, async, await, const, let, return, import, export, npm, GitHub, commit, branch, pull request, refactor, TypeScript, JavaScript, Rust, Python, JSON, API, endpoint, callback, promise.",
     },
 ];
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct ModelEntry {
-    id: String,
-    #[serde(default)]
-    label: String,
-}
 
 struct Session {
     stop: Arc<AtomicBool>,
@@ -1105,40 +1084,78 @@ fn pcm16_wav_bytes(pcm: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
     Ok(buf.into_inner())
 }
 
-fn transcribe_openrouter(
+fn build_multipart(
+    boundary: &str,
+    file_field: &str,
+    file_name: &str,
+    file_bytes: &[u8],
+    file_mime: &str,
+    fields: &[(&str, &str)],
+) -> Vec<u8> {
+    let mut body: Vec<u8> = Vec::with_capacity(file_bytes.len() + 512);
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(
+        format!(
+            "Content-Disposition: form-data; name=\"{}\"; filename=\"{}\"\r\nContent-Type: {}\r\n\r\n",
+            file_field, file_name, file_mime
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(file_bytes);
+    body.extend_from_slice(b"\r\n");
+    for (name, value) in fields {
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(
+            format!("Content-Disposition: form-data; name=\"{}\"\r\n\r\n", name).as_bytes(),
+        );
+        body.extend_from_slice(value.as_bytes());
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+    body
+}
+
+fn transcribe_cloud(
     pcm: &[f32],
     sample_rate: u32,
+    base_url: &str,
     api_key: &str,
     model: &str,
     language: &str,
     _prompt: &str,
 ) -> Result<String, String> {
-    use base64::Engine;
     if api_key.trim().is_empty() {
-        return Err("OpenRouter API key not set".into());
+        return Err("API key not set".into());
     }
     let wav = pcm16_wav_bytes(pcm, sample_rate).map_err(|e| e.to_string())?;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&wav);
-    let mut body = serde_json::json!({
-        "model": model,
-        "input_audio": { "data": b64, "format": "wav" },
-        "temperature": 0.0,
-    });
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let boundary = format!("----MyVoiceFormBoundary{:x}", nanos);
+
+    let mut fields: Vec<(&str, &str)> = vec![("model", model), ("response_format", "json")];
     if !language.is_empty() && language != "auto" {
-        body["language"] = serde_json::Value::String(language.to_string());
+        fields.push(("language", language));
     }
-    let resp = ureq::post("https://openrouter.ai/api/v1/audio/transcriptions")
+    let body = build_multipart(&boundary, "file", "audio.wav", &wav, "audio/wav", &fields);
+
+    let url = format!("{}/audio/transcriptions", base_url.trim_end_matches('/'));
+    let resp = ureq::post(&url)
         .set("Authorization", &format!("Bearer {}", api_key))
-        .set("Content-Type", "application/json")
+        .set(
+            "Content-Type",
+            &format!("multipart/form-data; boundary={}", boundary),
+        )
         .set("HTTP-Referer", "https://github.com/joymadhu49/MyVoice")
         .set("X-Title", "MyVoice")
-        .send_json(body)
+        .send_bytes(&body)
         .map_err(|e| match e {
             ureq::Error::Status(code, r) => {
                 let msg = r.into_string().unwrap_or_default();
-                format!("OpenRouter HTTP {}: {}", code, msg)
+                format!("STT HTTP {}: {}", code, msg)
             }
-            ureq::Error::Transport(t) => format!("OpenRouter transport: {}", t),
+            ureq::Error::Transport(t) => format!("STT transport: {}", t),
         })?;
     let text = resp.into_string().map_err(|e| e.to_string())?;
     let val: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
@@ -1196,6 +1213,7 @@ fn smart_format_extra(mode_id: &str) -> Option<&'static str> {
 fn smart_format_text(
     raw: &str,
     mode_id: &str,
+    base_url: &str,
     api_key: &str,
     model: &str,
     system_base: &str,
@@ -1206,7 +1224,7 @@ fn smart_format_text(
         return Ok(String::new());
     }
     if api_key.trim().is_empty() {
-        return Err("OpenRouter key required for smart format".into());
+        return Err("API key required for smart format".into());
     }
     let mut system = String::from(system_base);
     if let Some(extra) = smart_format_extra(mode_id) {
@@ -1225,7 +1243,8 @@ fn smart_format_text(
             { "role": "user", "content": trimmed },
         ],
     });
-    let resp = ureq::post("https://openrouter.ai/api/v1/chat/completions")
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    let resp = ureq::post(&url)
         .set("Authorization", &format!("Bearer {}", api_key))
         .set("Content-Type", "application/json")
         .set("HTTP-Referer", "https://github.com/joymadhu49/MyVoice")
@@ -1303,26 +1322,27 @@ fn stop_inner(state: &AppState) -> Result<(String, u64, String, String), String>
         return Err("no speech detected".into());
     }
 
-    let (provider, language, or_key, stt_model, settings_clone) = {
+    let (provider, language, base_url, api_key, stt_model, settings_clone) = {
         let s = state.settings.lock().unwrap();
         (
             s.provider.clone(),
             s.language.clone(),
-            s.openrouter_api_key.clone(),
-            s.active_stt_model.clone(),
+            s.api_base_url.clone(),
+            s.api_key.clone(),
+            s.stt_model.clone(),
             s.clone(),
         )
     };
 
     let voice_prompt = voice_profile_prompt(&settings_clone);
 
-    if provider == "openrouter" {
-        let text = transcribe_openrouter(
-            &pcm, 16000, &or_key, &stt_model, &language, &voice_prompt,
+    if provider == "cloud" || provider == "openrouter" {
+        let text = transcribe_cloud(
+            &pcm, 16000, &base_url, &api_key, &stt_model, &language, &voice_prompt,
         )?;
         let cleaned = filter_hallucinations(&text);
         let final_text = maybe_smart_format(&cleaned, &settings_clone);
-        return Ok((final_text, duration_ms, "openrouter".into(), stt_model));
+        return Ok((final_text, duration_ms, "cloud".into(), stt_model));
     }
 
     let (model_path, model_id) = ensure_active_model(state).map_err(|e| format!("model: {}", e))?;
@@ -1385,7 +1405,7 @@ fn maybe_smart_format(raw: &str, settings: &AppSettings) -> String {
     if level == "none" {
         return raw.to_string();
     }
-    if settings.openrouter_api_key.trim().is_empty() {
+    if settings.api_key.trim().is_empty() {
         return raw.to_string();
     }
     let trimmed = raw.trim();
@@ -1408,8 +1428,9 @@ fn maybe_smart_format(raw: &str, settings: &AppSettings) -> String {
     match smart_format_text(
         raw,
         &settings.active_mode,
-        &settings.openrouter_api_key,
-        &settings.active_chat_model,
+        &settings.api_base_url,
+        &settings.api_key,
+        &settings.chat_model,
         system_base,
         &style_addendum,
     ) {
@@ -1440,72 +1461,6 @@ fn record_history(text: &str, duration_ms: u64, provider: &str, model: &str) {
 }
 
 #[tauri::command]
-fn list_default_stt_models() -> Vec<ModelEntry> {
-    default_stt_models()
-}
-
-#[tauri::command]
-fn list_default_chat_models() -> Vec<ModelEntry> {
-    default_chat_models()
-}
-
-#[tauri::command]
-async fn browse_openrouter_models(
-    api_key: String,
-    kind: String,
-) -> Result<Vec<serde_json::Value>, String> {
-    let mut req = ureq::get("https://openrouter.ai/api/v1/models");
-    if !api_key.trim().is_empty() {
-        req = req.set("Authorization", &format!("Bearer {}", api_key));
-    }
-    let resp = req.call().map_err(|e| match e {
-        ureq::Error::Status(code, r) => {
-            format!("HTTP {}: {}", code, r.into_string().unwrap_or_default())
-        }
-        ureq::Error::Transport(t) => format!("transport: {}", t),
-    })?;
-    let body = resp.into_string().map_err(|e| e.to_string())?;
-    let val: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
-    let arr = val
-        .get("data")
-        .and_then(|d| d.as_array())
-        .cloned()
-        .unwrap_or_default();
-    let kind = kind.to_lowercase();
-    let filtered: Vec<serde_json::Value> = arr
-        .into_iter()
-        .filter(|m| {
-            let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let modalities = m
-                .get("architecture")
-                .and_then(|a| a.get("input_modalities"))
-                .and_then(|im| im.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            match kind.as_str() {
-                "stt" => modalities.iter().any(|s| s == "audio") || id.contains("whisper"),
-                "chat" => !modalities.iter().any(|s| s == "audio") && !id.contains("whisper"),
-                _ => true,
-            }
-        })
-        .map(|m| {
-            let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let name = m
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&id)
-                .to_string();
-            serde_json::json!({ "id": id, "name": name })
-        })
-        .collect();
-    Ok(filtered)
-}
-
-#[tauri::command]
 fn list_builtin_modes() -> Vec<serde_json::Value> {
     BUILTIN_MODES
         .iter()
@@ -1520,11 +1475,12 @@ fn preview_voice_prompt(state: State<'_, AppState>) -> String {
 }
 
 #[tauri::command]
-async fn test_openrouter(api_key: String) -> Result<String, String> {
+async fn test_cloud(base_url: String, api_key: String) -> Result<String, String> {
     if api_key.trim().is_empty() {
         return Err("API key empty".into());
     }
-    let resp = ureq::get("https://openrouter.ai/api/v1/auth/key")
+    let url = format!("{}/models", base_url.trim_end_matches('/'));
+    let resp = ureq::get(&url)
         .set("Authorization", &format!("Bearer {}", api_key))
         .call()
         .map_err(|e| match e {
@@ -1534,7 +1490,7 @@ async fn test_openrouter(api_key: String) -> Result<String, String> {
             ureq::Error::Transport(t) => format!("transport: {}", t),
         })?;
     let _ = resp.into_string();
-    Ok("OpenRouter API key works.".into())
+    Ok("API key works.".into())
 }
 
 fn deliver_text(text: &str, auto_paste: bool) {
@@ -2290,12 +2246,9 @@ pub fn run() {
             get_settings,
             update_settings,
             open_settings,
-            list_default_stt_models,
-            list_default_chat_models,
-            browse_openrouter_models,
             list_builtin_modes,
             preview_voice_prompt,
-            test_openrouter,
+            test_cloud,
             list_history,
             delete_history_item,
             flag_history_item,

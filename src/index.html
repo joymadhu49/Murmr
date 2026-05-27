@@ -177,55 +177,43 @@
                   <span>Local Whisper</span>
                 </label>
                 <label class="row" style="gap:6px;">
-                  <input type="radio" name="provider" value="openrouter" />
-                  <span>OpenRouter</span>
+                  <input type="radio" name="provider" value="cloud" />
+                  <span>Cloud (Groq / OpenAI / OpenRouter)</span>
                 </label>
               </div>
             </div>
-            <div id="openrouter-section" style="display:none;">
+            <div id="cloud-section" style="display:none;">
+              <div class="field">
+                <label>API base URL</label>
+                <div class="row">
+                  <input id="cloud-base-url" type="text" placeholder="https://api.groq.com/openai/v1" style="flex:1;min-width:240px;" />
+                  <select id="cloud-preset" style="min-width:140px;">
+                    <option value="">Preset…</option>
+                    <option value="https://api.groq.com/openai/v1">Groq (fastest)</option>
+                    <option value="https://api.openai.com/v1">OpenAI</option>
+                    <option value="https://openrouter.ai/api/v1">OpenRouter</option>
+                  </select>
+                </div>
+                <div class="muted small">Any OpenAI-compatible endpoint. Groq is fastest (Whisper at 228x realtime).</div>
+              </div>
               <div class="field">
                 <label>API key</label>
                 <div class="row">
-                  <input id="or-key" type="password" placeholder="sk-or-v1-..." style="flex:1;min-width:240px;" autocomplete="off" />
-                  <button id="or-key-toggle" class="btn" type="button">Show</button>
-                  <button id="or-test" class="btn">Test</button>
+                  <input id="cloud-key" type="password" placeholder="gsk_..." style="flex:1;min-width:240px;" autocomplete="off" />
+                  <button id="cloud-key-toggle" class="btn" type="button">Show</button>
+                  <button id="cloud-test" class="btn">Test</button>
                 </div>
-                <div id="or-status" class="muted small"></div>
+                <div id="cloud-status" class="muted small"></div>
               </div>
-
               <div class="field">
                 <label>Speech-to-text model</label>
-                <div class="row">
-                  <select id="or-stt-active" style="flex:1;min-width:240px;"></select>
-                  <button id="or-stt-browse" class="btn" type="button">Browse catalog</button>
-                </div>
-                <div class="row" style="margin-top:6px;">
-                  <input id="or-stt-new" type="text" placeholder="openai/whisper-large-v3-turbo" style="flex:1;min-width:240px;" />
-                  <button id="or-stt-add" class="btn" type="button">Add</button>
-                  <button id="or-stt-remove" class="btn" type="button">Remove</button>
-                </div>
+                <input id="cloud-stt-model" type="text" placeholder="whisper-large-v3-turbo" />
+                <div class="muted small">Groq: <code>whisper-large-v3-turbo</code>, <code>whisper-large-v3</code> · OpenAI: <code>whisper-1</code> · OpenRouter: <code>openai/whisper-1</code></div>
               </div>
-
               <div class="field">
                 <label>Smart-format chat model</label>
-                <div class="row">
-                  <select id="or-chat-active" style="flex:1;min-width:240px;"></select>
-                  <button id="or-chat-browse" class="btn" type="button">Browse catalog</button>
-                </div>
-                <div class="row" style="margin-top:6px;">
-                  <input id="or-chat-new" type="text" placeholder="openai/gpt-4o-mini" style="flex:1;min-width:240px;" />
-                  <button id="or-chat-add" class="btn" type="button">Add</button>
-                  <button id="or-chat-remove" class="btn" type="button">Remove</button>
-                </div>
-              </div>
-
-              <div id="or-browse-modal" hidden style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
-                <div class="row" style="justify-content:space-between;">
-                  <strong id="or-browse-title">Catalog</strong>
-                  <button id="or-browse-close" class="btn" type="button">Close</button>
-                </div>
-                <input id="or-browse-filter" type="text" placeholder="filter by name or id…" style="width:100%;margin-top:6px;" />
-                <div id="or-browse-list" style="max-height:240px;overflow:auto;margin-top:6px;border:1px solid var(--border);border-radius:8px;"></div>
+                <input id="cloud-chat-model" type="text" placeholder="llama-3.1-8b-instant" />
+                <div class="muted small">Groq: <code>llama-3.1-8b-instant</code> · OpenAI: <code>gpt-4o-mini</code> · OpenRouter: <code>meta-llama/llama-3.1-8b-instruct</code></div>
               </div>
             </div>
           </div>
@@ -332,7 +320,7 @@
                 <span class="cleanup-card-preview">Hey Joey, are we still on for coffee? Let's leave early to beat traffic. What do you think?</span>
               </button>
             </div>
-            <p class="style-requires-groq" id="style-groq-note">Cleanup levels above None require an OpenRouter API key in Settings.</p>
+            <p class="style-requires-groq" id="style-groq-note">Cleanup levels above None require a Cloud API key in Settings.</p>
           </div>
 
           <!-- Personal messages sub-tab -->

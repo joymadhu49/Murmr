@@ -50,10 +50,8 @@ let activeTab = "home";
 // Settings tab elements
 let modelsEl, langEl, autoPasteEl, settingsStatusEl;
 let providerInputs;
-let orSection, orKeyEl, orStatusEl, orTestBtn;
-let orSttActiveEl, orSttNewEl, orSttAddBtn, orSttRemoveBtn, orSttBrowseBtn;
-let orChatActiveEl, orChatNewEl, orChatAddBtn, orChatRemoveBtn, orChatBrowseBtn;
-let orBrowseModalEl, orBrowseTitleEl, orBrowseListEl, orBrowseFilterEl, orBrowseCloseBtn;
+let cloudSection, cloudBaseUrlEl, cloudKeyEl, cloudStatusEl, cloudTestBtn;
+let cloudSttModelEl, cloudChatModelEl, cloudPresetEl;
 let activeModeEl, customVocabEl, customModesListEl, addCustomModeBtn, promptPreviewEl;
 let smartFormatEl, autostartEl;
 let builtinModesCache = null;
@@ -227,7 +225,7 @@ async function refreshStats() {
 async function refreshSettingsCard() {
   try {
     const s = await invoke("get_settings");
-    const prov = s.provider === "openrouter" ? `OpenRouter · ${s.active_stt_model}` : `Local · ${s.active_model}`;
+    const prov = (s.provider === "cloud" || s.provider === "openrouter") ? `Cloud · ${s.stt_model || s.active_stt_model || ""}` : `Local · ${s.active_model}`;
     if (providerInfo) providerInfo.textContent = `${prov} · lang=${s.language || "auto"}`;
     if (activeModeEl && !activeModeEl.options.length) {
       await populateModeDropdown(s);
@@ -497,7 +495,8 @@ async function refreshStyleTab() {
   });
   const noteEl = document.getElementById("style-groq-note");
   if (noteEl) {
-    noteEl.hidden = !!(settings.openrouter_api_key && settings.openrouter_api_key.trim());
+    const key = settings.api_key || settings.openrouter_api_key || "";
+    noteEl.hidden = !!key.trim();
   }
   applyStyleSelections(profiles || {}, activeKey, false);
   setStyleSubTab(activeStyleSub);
@@ -613,10 +612,11 @@ async function refreshSettings() {
   langEl.value = s.language || "auto";
   autoPasteEl.checked = !!s.auto_paste;
   providerInputs.forEach((r) => (r.checked = r.value === (s.provider || "local")));
-  orKeyEl.value = s.openrouter_api_key || "";
-  renderModelSelect(orSttActiveEl, s.stt_models || [], s.active_stt_model);
-  renderModelSelect(orChatActiveEl, s.chat_models || [], s.active_chat_model);
-  orSection.style.display = (s.provider === "openrouter") ? "block" : "none";
+  cloudBaseUrlEl.value = s.api_base_url || "https://api.groq.com/openai/v1";
+  cloudKeyEl.value = s.api_key || s.openrouter_api_key || "";
+  cloudSttModelEl.value = s.stt_model || s.active_stt_model || "whisper-large-v3-turbo";
+  cloudChatModelEl.value = s.chat_model || s.active_chat_model || "llama-3.1-8b-instant";
+  cloudSection.style.display = (s.provider === "cloud" || s.provider === "openrouter") ? "block" : "none";
 
   if (customVocabEl) customVocabEl.value = s.custom_vocab || "";
   if (smartFormatEl) smartFormatEl.checked = !!s.smart_format;
@@ -743,9 +743,10 @@ async function saveBehavior() {
   s.language = langEl.value;
   s.auto_paste = autoPasteEl.checked;
   s.provider = [...providerInputs].find((r) => r.checked)?.value || "local";
-  s.openrouter_api_key = orKeyEl.value.trim();
-  s.active_stt_model = orSttActiveEl.value || s.active_stt_model;
-  s.active_chat_model = orChatActiveEl.value || s.active_chat_model;
+  s.api_base_url = cloudBaseUrlEl.value.trim() || "https://api.groq.com/openai/v1";
+  s.api_key = cloudKeyEl.value.trim();
+  s.stt_model = cloudSttModelEl.value.trim() || "whisper-large-v3-turbo";
+  s.chat_model = cloudChatModelEl.value.trim() || "llama-3.1-8b-instant";
   if (customVocabEl) s.custom_vocab = customVocabEl.value;
   if (activeModeEl) s.active_mode = activeModeEl.value || "notes";
   if (smartFormatEl) s.smart_format = smartFormatEl.checked;
@@ -758,7 +759,7 @@ async function saveBehavior() {
     }));
   }
   await invoke("update_settings", { settings: s });
-  orSection.style.display = (s.provider === "openrouter") ? "block" : "none";
+  cloudSection.style.display = (s.provider === "cloud" || s.provider === "openrouter") ? "block" : "none";
   if (settingsStatusEl) settingsStatusEl.textContent = "Settings saved.";
   await refreshSettingsCard();
   await refreshStats();
@@ -779,112 +780,19 @@ async function onAutostartToggle() {
   }
 }
 
-async function testOpenRouter() {
-  orStatusEl.textContent = "Testing…";
+async function testCloud() {
+  cloudStatusEl.textContent = "Testing…";
   try {
-    const msg = await invoke("test_openrouter", { apiKey: orKeyEl.value.trim() });
-    orStatusEl.textContent = msg;
-    orStatusEl.style.color = "var(--good)";
-  } catch (e) {
-    orStatusEl.textContent = "Failed: " + e;
-    orStatusEl.style.color = "var(--bad)";
-  }
-}
-
-function renderModelSelect(selectEl, entries, activeId) {
-  if (!selectEl) return;
-  selectEl.innerHTML = entries
-    .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.label || m.id)} — ${escapeHtml(m.id)}</option>`)
-    .join("");
-  if (activeId && entries.some((m) => m.id === activeId)) {
-    selectEl.value = activeId;
-  }
-}
-
-async function addModelEntry(kind, id) {
-  id = (id || "").trim();
-  if (!id) return;
-  const s = await invoke("get_settings");
-  const list = (kind === "stt" ? s.stt_models : s.chat_models) || [];
-  if (list.some((m) => m.id === id)) {
-    return;
-  }
-  const label = id.split("/").pop();
-  list.push({ id, label });
-  if (kind === "stt") {
-    s.stt_models = list;
-    s.active_stt_model = id;
-  } else {
-    s.chat_models = list;
-    s.active_chat_model = id;
-  }
-  await invoke("update_settings", { settings: s });
-  await refreshSettings();
-}
-
-async function removeActiveModelEntry(kind) {
-  const s = await invoke("get_settings");
-  const list = (kind === "stt" ? s.stt_models : s.chat_models) || [];
-  const activeId = kind === "stt" ? s.active_stt_model : s.active_chat_model;
-  const filtered = list.filter((m) => m.id !== activeId);
-  if (filtered.length === 0) {
-    if (settingsStatusEl) settingsStatusEl.textContent = "Cannot remove the only model — add another first.";
-    return;
-  }
-  if (kind === "stt") {
-    s.stt_models = filtered;
-    s.active_stt_model = filtered[0].id;
-  } else {
-    s.chat_models = filtered;
-    s.active_chat_model = filtered[0].id;
-  }
-  await invoke("update_settings", { settings: s });
-  await refreshSettings();
-}
-
-async function browseCatalog(kind) {
-  if (!orBrowseModalEl) return;
-  orBrowseTitleEl.textContent = kind === "stt" ? "OpenRouter STT catalog" : "OpenRouter chat catalog";
-  orBrowseListEl.innerHTML = '<div class="muted small" style="padding:10px;">Loading…</div>';
-  orBrowseFilterEl.value = "";
-  orBrowseModalEl.hidden = false;
-  let list = [];
-  try {
-    list = await invoke("browse_openrouter_models", {
-      apiKey: orKeyEl.value.trim(),
-      kind,
+    const msg = await invoke("test_cloud", {
+      baseUrl: cloudBaseUrlEl.value.trim() || "https://api.groq.com/openai/v1",
+      apiKey: cloudKeyEl.value.trim(),
     });
+    cloudStatusEl.textContent = msg;
+    cloudStatusEl.style.color = "var(--good)";
   } catch (e) {
-    orBrowseListEl.innerHTML = `<div class="muted small" style="padding:10px;color:var(--bad);">${escapeHtml(String(e))}</div>`;
-    return;
+    cloudStatusEl.textContent = "Failed: " + e;
+    cloudStatusEl.style.color = "var(--bad)";
   }
-  const render = (filter) => {
-    const f = (filter || "").toLowerCase();
-    const items = list.filter((m) => !f || m.id.toLowerCase().includes(f) || (m.name || "").toLowerCase().includes(f));
-    if (items.length === 0) {
-      orBrowseListEl.innerHTML = '<div class="muted small" style="padding:10px;">No matches.</div>';
-      return;
-    }
-    orBrowseListEl.innerHTML = items
-      .map(
-        (m) => `<div class="row" style="padding:6px 10px;border-bottom:1px solid var(--border);gap:8px;align-items:center;">
-          <div style="flex:1;min-width:0;">
-            <div style="font-weight:600;font-size:13px;">${escapeHtml(m.name || m.id)}</div>
-            <div class="muted small" style="font-family:ui-monospace,Menlo,monospace;">${escapeHtml(m.id)}</div>
-          </div>
-          <button class="btn or-pick" type="button" data-id="${escapeHtml(m.id)}" data-name="${escapeHtml(m.name || m.id)}">Add</button>
-        </div>`
-      )
-      .join("");
-    orBrowseListEl.querySelectorAll("button.or-pick").forEach((b) =>
-      b.addEventListener("click", async () => {
-        await addModelEntry(kind, b.dataset.id);
-        orBrowseModalEl.hidden = true;
-      })
-    );
-  };
-  render("");
-  orBrowseFilterEl.oninput = (e) => render(e.target.value);
 }
 
 async function clearHistoryAction() {
@@ -929,25 +837,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   autoPasteEl = document.querySelector("#auto-paste");
   settingsStatusEl = document.querySelector("#settings-status");
   providerInputs = document.querySelectorAll('input[name="provider"]');
-  orSection = document.querySelector("#openrouter-section");
-  orKeyEl = document.querySelector("#or-key");
-  orStatusEl = document.querySelector("#or-status");
-  orTestBtn = document.querySelector("#or-test");
-  orSttActiveEl = document.querySelector("#or-stt-active");
-  orSttNewEl = document.querySelector("#or-stt-new");
-  orSttAddBtn = document.querySelector("#or-stt-add");
-  orSttRemoveBtn = document.querySelector("#or-stt-remove");
-  orSttBrowseBtn = document.querySelector("#or-stt-browse");
-  orChatActiveEl = document.querySelector("#or-chat-active");
-  orChatNewEl = document.querySelector("#or-chat-new");
-  orChatAddBtn = document.querySelector("#or-chat-add");
-  orChatRemoveBtn = document.querySelector("#or-chat-remove");
-  orChatBrowseBtn = document.querySelector("#or-chat-browse");
-  orBrowseModalEl = document.querySelector("#or-browse-modal");
-  orBrowseTitleEl = document.querySelector("#or-browse-title");
-  orBrowseListEl = document.querySelector("#or-browse-list");
-  orBrowseFilterEl = document.querySelector("#or-browse-filter");
-  orBrowseCloseBtn = document.querySelector("#or-browse-close");
+  cloudSection = document.querySelector("#cloud-section");
+  cloudBaseUrlEl = document.querySelector("#cloud-base-url");
+  cloudKeyEl = document.querySelector("#cloud-key");
+  cloudStatusEl = document.querySelector("#cloud-status");
+  cloudTestBtn = document.querySelector("#cloud-test");
+  cloudSttModelEl = document.querySelector("#cloud-stt-model");
+  cloudChatModelEl = document.querySelector("#cloud-chat-model");
+  cloudPresetEl = document.querySelector("#cloud-preset");
   activeModeEl = document.querySelector("#active-mode");
   customVocabEl = document.querySelector("#custom-vocab");
   customModesListEl = document.querySelector("#custom-modes-list");
@@ -1011,21 +908,40 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (addCustomModeBtn) {
     addCustomModeBtn.addEventListener("click", addCustomMode);
   }
-  const orKeyToggle = document.querySelector("#or-key-toggle");
-  if (orKeyToggle) {
-    orKeyToggle.addEventListener("click", () => {
-      const isPwd = orKeyEl.type === "password";
-      orKeyEl.type = isPwd ? "text" : "password";
-      orKeyToggle.textContent = isPwd ? "Hide" : "Show";
+  const cloudKeyToggle = document.querySelector("#cloud-key-toggle");
+  if (cloudKeyToggle) {
+    cloudKeyToggle.addEventListener("click", () => {
+      const isPwd = cloudKeyEl.type === "password";
+      cloudKeyEl.type = isPwd ? "text" : "password";
+      cloudKeyToggle.textContent = isPwd ? "Hide" : "Show";
     });
   }
-  if (orSttAddBtn) orSttAddBtn.addEventListener("click", () => addModelEntry("stt", orSttNewEl.value));
-  if (orSttRemoveBtn) orSttRemoveBtn.addEventListener("click", () => removeActiveModelEntry("stt"));
-  if (orSttBrowseBtn) orSttBrowseBtn.addEventListener("click", () => browseCatalog("stt"));
-  if (orChatAddBtn) orChatAddBtn.addEventListener("click", () => addModelEntry("chat", orChatNewEl.value));
-  if (orChatRemoveBtn) orChatRemoveBtn.addEventListener("click", () => removeActiveModelEntry("chat"));
-  if (orChatBrowseBtn) orChatBrowseBtn.addEventListener("click", () => browseCatalog("chat"));
-  if (orBrowseCloseBtn) orBrowseCloseBtn.addEventListener("click", () => (orBrowseModalEl.hidden = true));
+  if (cloudTestBtn) cloudTestBtn.addEventListener("click", testCloud);
+  if (cloudPresetEl) {
+    cloudPresetEl.addEventListener("change", () => {
+      const v = cloudPresetEl.value;
+      if (!v) return;
+      cloudBaseUrlEl.value = v;
+      if (v.includes("groq.com")) {
+        cloudSttModelEl.value = "whisper-large-v3-turbo";
+        cloudChatModelEl.value = "llama-3.1-8b-instant";
+      } else if (v.includes("openai.com")) {
+        cloudSttModelEl.value = "whisper-1";
+        cloudChatModelEl.value = "gpt-4o-mini";
+      } else if (v.includes("openrouter.ai")) {
+        cloudSttModelEl.value = "openai/whisper-1";
+        cloudChatModelEl.value = "meta-llama/llama-3.1-8b-instruct";
+      }
+      saveBehavior();
+      cloudPresetEl.value = "";
+    });
+  }
+  [cloudBaseUrlEl, cloudKeyEl, cloudSttModelEl, cloudChatModelEl].forEach((el) => {
+    if (!el) return;
+    el.addEventListener("change", saveBehavior);
+    el.addEventListener("blur", saveBehavior);
+  });
+  providerInputs.forEach((r) => r.addEventListener("change", saveBehavior));
 
   btn.addEventListener("click", toggle);
   const cancelBtn = document.querySelector("#cancel-rec");
@@ -1084,12 +1000,6 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   langEl.addEventListener("change", saveBehavior);
   autoPasteEl.addEventListener("change", saveBehavior);
-  providerInputs.forEach((r) => r.addEventListener("change", saveBehavior));
-  orKeyEl.addEventListener("change", saveBehavior);
-  orKeyEl.addEventListener("blur", saveBehavior);
-  orSttActiveEl.addEventListener("change", saveBehavior);
-  orChatActiveEl.addEventListener("change", saveBehavior);
-  orTestBtn.addEventListener("click", testOpenRouter);
   if (smartFormatEl) smartFormatEl.addEventListener("change", saveBehavior);
   if (autostartEl) autostartEl.addEventListener("change", onAutostartToggle);
   document.querySelector("#clear-history").addEventListener("click", clearHistoryAction);
