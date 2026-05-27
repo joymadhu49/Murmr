@@ -168,25 +168,56 @@
                   <span>Local Whisper</span>
                 </label>
                 <label class="row" style="gap:6px;">
-                  <input type="radio" name="provider" value="groq" />
-                  <span>Groq Cloud</span>
+                  <input type="radio" name="provider" value="openrouter" />
+                  <span>OpenRouter</span>
                 </label>
               </div>
             </div>
-            <div id="groq-section" style="display:none;">
+            <div id="openrouter-section" style="display:none;">
               <div class="field">
                 <label>API key</label>
                 <div class="row">
-                  <input id="groq-key" type="password" placeholder="gsk_..." style="flex:1;min-width:240px;" autocomplete="off" />
-                  <button id="groq-key-toggle" class="btn" type="button">Show</button>
-                  <button id="groq-test" class="btn">Test</button>
+                  <input id="or-key" type="password" placeholder="sk-or-v1-..." style="flex:1;min-width:240px;" autocomplete="off" />
+                  <button id="or-key-toggle" class="btn" type="button">Show</button>
+                  <button id="or-test" class="btn">Test</button>
+                </div>
+                <div id="or-status" class="muted small"></div>
+              </div>
+
+              <div class="field">
+                <label>Speech-to-text model</label>
+                <div class="row">
+                  <select id="or-stt-active" style="flex:1;min-width:240px;"></select>
+                  <button id="or-stt-browse" class="btn" type="button">Browse catalog</button>
+                </div>
+                <div class="row" style="margin-top:6px;">
+                  <input id="or-stt-new" type="text" placeholder="openai/whisper-large-v3-turbo" style="flex:1;min-width:240px;" />
+                  <button id="or-stt-add" class="btn" type="button">Add</button>
+                  <button id="or-stt-remove" class="btn" type="button">Remove</button>
                 </div>
               </div>
+
               <div class="field">
-                <label>Model</label>
-                <select id="groq-model"></select>
+                <label>Smart-format chat model</label>
+                <div class="row">
+                  <select id="or-chat-active" style="flex:1;min-width:240px;"></select>
+                  <button id="or-chat-browse" class="btn" type="button">Browse catalog</button>
+                </div>
+                <div class="row" style="margin-top:6px;">
+                  <input id="or-chat-new" type="text" placeholder="openai/gpt-4o-mini" style="flex:1;min-width:240px;" />
+                  <button id="or-chat-add" class="btn" type="button">Add</button>
+                  <button id="or-chat-remove" class="btn" type="button">Remove</button>
+                </div>
               </div>
-              <div id="groq-status" class="muted small"></div>
+
+              <div id="or-browse-modal" hidden style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+                <div class="row" style="justify-content:space-between;">
+                  <strong id="or-browse-title">Catalog</strong>
+                  <button id="or-browse-close" class="btn" type="button">Close</button>
+                </div>
+                <input id="or-browse-filter" type="text" placeholder="filter by name or id…" style="width:100%;margin-top:6px;" />
+                <div id="or-browse-list" style="max-height:240px;overflow:auto;margin-top:6px;border:1px solid var(--border);border-radius:8px;"></div>
+              </div>
             </div>
           </div>
 
@@ -223,13 +254,7 @@
               <input id="smart-format" type="checkbox" />
               <label for="smart-format" class="opt-label">AI polish (punctuation, fillers, casing)</label>
             </div>
-            <div class="field" id="smart-format-model-wrap">
-              <label>Polish model</label>
-              <select id="smart-format-model">
-                <option value="llama-3.1-8b-instant">Fast (8B)</option>
-                <option value="llama-3.3-70b-versatile">Accurate (70B)</option>
-              </select>
-            </div>
+            <div class="muted small">Polish uses the OpenRouter chat model selected above.</div>
           </div>
 
           <div class="card" style="margin-top:14px;">
@@ -298,7 +323,7 @@
                 <span class="cleanup-card-preview">Hey Joey, are we still on for coffee? Let's leave early to beat traffic. What do you think?</span>
               </button>
             </div>
-            <p class="style-requires-groq" id="style-groq-note">Cleanup levels above None require a Groq API key in Settings.</p>
+            <p class="style-requires-groq" id="style-groq-note">Cleanup levels above None require an OpenRouter API key in Settings.</p>
           </div>
 
           <!-- Personal messages sub-tab -->

@@ -115,11 +115,17 @@ struct AppSettings {
     language: String,
     auto_paste: bool,
     #[serde(default = "default_provider")]
-    provider: String, // "local" | "groq"
+    provider: String, // "local" | "openrouter"
     #[serde(default)]
-    groq_api_key: String,
-    #[serde(default = "default_groq_model")]
-    groq_model: String, // e.g. "whisper-large-v3-turbo"
+    openrouter_api_key: String,
+    #[serde(default = "default_stt_models")]
+    stt_models: Vec<ModelEntry>,
+    #[serde(default = "default_active_stt_model")]
+    active_stt_model: String,
+    #[serde(default = "default_chat_models")]
+    chat_models: Vec<ModelEntry>,
+    #[serde(default = "default_active_chat_model")]
+    active_chat_model: String,
     #[serde(default)]
     custom_vocab: String,
     #[serde(default = "default_active_mode")]
@@ -128,8 +134,6 @@ struct AppSettings {
     custom_modes: Vec<CustomMode>,
     #[serde(default = "default_smart_format")]
     smart_format: bool,
-    #[serde(default = "default_smart_format_model")]
-    smart_format_model: String,
     #[serde(default = "default_cleanup_level")]
     cleanup_level: String, // "none" | "light" | "medium" | "high"
     #[serde(default)]
@@ -145,17 +149,31 @@ struct AppSettings {
 fn default_provider() -> String {
     "local".into()
 }
-fn default_groq_model() -> String {
-    "whisper-large-v3-turbo".into()
+fn default_stt_models() -> Vec<ModelEntry> {
+    vec![
+        ModelEntry { id: "openai/whisper-large-v3-turbo".into(), label: "Whisper Large v3 Turbo".into() },
+        ModelEntry { id: "openai/whisper-large-v3".into(),       label: "Whisper Large v3".into() },
+        ModelEntry { id: "openai/whisper-1".into(),              label: "Whisper-1".into() },
+    ]
+}
+fn default_active_stt_model() -> String {
+    "openai/whisper-large-v3-turbo".into()
+}
+fn default_chat_models() -> Vec<ModelEntry> {
+    vec![
+        ModelEntry { id: "meta-llama/llama-3.1-8b-instruct".into(), label: "Llama 3.1 8B Instruct".into() },
+        ModelEntry { id: "openai/gpt-4o-mini".into(),               label: "GPT-4o mini".into() },
+        ModelEntry { id: "anthropic/claude-3.5-haiku".into(),       label: "Claude 3.5 Haiku".into() },
+    ]
+}
+fn default_active_chat_model() -> String {
+    "meta-llama/llama-3.1-8b-instruct".into()
 }
 fn default_active_mode() -> String {
     "notes".into()
 }
 fn default_smart_format() -> bool {
     true
-}
-fn default_smart_format_model() -> String {
-    "llama-3.1-8b-instant".into()
 }
 fn default_cleanup_level() -> String {
     "light".into()
@@ -177,13 +195,15 @@ impl Default for AppSettings {
             language: "en".into(),
             auto_paste: true,
             provider: default_provider(),
-            groq_api_key: String::new(),
-            groq_model: default_groq_model(),
+            openrouter_api_key: String::new(),
+            stt_models: default_stt_models(),
+            active_stt_model: default_active_stt_model(),
+            chat_models: default_chat_models(),
+            active_chat_model: default_active_chat_model(),
             custom_vocab: String::new(),
             active_mode: default_active_mode(),
             custom_modes: Vec::new(),
             smart_format: default_smart_format(),
-            smart_format_model: default_smart_format_model(),
             cleanup_level: default_cleanup_level(),
             style_profiles: StyleProfiles::default(),
             active_style_profile: default_active_style_profile(),
@@ -222,11 +242,12 @@ const BUILTIN_MODES: &[BuiltinMode] = &[
     },
 ];
 
-const GROQ_MODELS: &[&str] = &[
-    "whisper-large-v3-turbo",
-    "whisper-large-v3",
-    "distil-whisper-large-v3-en",
-];
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct ModelEntry {
+    id: String,
+    #[serde(default)]
+    label: String,
+}
 
 struct Session {
     stop: Arc<AtomicBool>,
@@ -1081,59 +1102,40 @@ fn pcm16_wav_bytes(pcm: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
     Ok(buf.into_inner())
 }
 
-fn transcribe_groq(
+fn transcribe_openrouter(
     pcm: &[f32],
     sample_rate: u32,
     api_key: &str,
     model: &str,
     language: &str,
-    prompt: &str,
+    _prompt: &str,
 ) -> Result<String, String> {
+    use base64::Engine;
     if api_key.trim().is_empty() {
-        return Err("Groq API key not set".into());
+        return Err("OpenRouter API key not set".into());
     }
     let wav = pcm16_wav_bytes(pcm, sample_rate).map_err(|e| e.to_string())?;
-    let boundary = format!("----myvoice{:x}", std::process::id());
-    let mut body: Vec<u8> = Vec::with_capacity(wav.len() + 1024);
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-    body.extend_from_slice(b"Content-Disposition: form-data; name=\"model\"\r\n\r\n");
-    body.extend_from_slice(model.as_bytes());
-    body.extend_from_slice(b"\r\n");
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&wav);
+    let mut body = serde_json::json!({
+        "model": model,
+        "input_audio": { "data": b64, "format": "wav" },
+        "temperature": 0.0,
+    });
     if !language.is_empty() && language != "auto" {
-        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(b"Content-Disposition: form-data; name=\"language\"\r\n\r\n");
-        body.extend_from_slice(language.as_bytes());
-        body.extend_from_slice(b"\r\n");
+        body["language"] = serde_json::Value::String(language.to_string());
     }
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-    body.extend_from_slice(b"Content-Disposition: form-data; name=\"response_format\"\r\n\r\n");
-    body.extend_from_slice(b"json");
-    body.extend_from_slice(b"\r\n");
-    if !prompt.trim().is_empty() {
-        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(b"Content-Disposition: form-data; name=\"prompt\"\r\n\r\n");
-        body.extend_from_slice(prompt.as_bytes());
-        body.extend_from_slice(b"\r\n");
-    }
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-    body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\n");
-    body.extend_from_slice(&wav);
-    body.extend_from_slice(b"\r\n");
-    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
-
-    let resp = ureq::post("https://api.groq.com/openai/v1/audio/transcriptions")
+    let resp = ureq::post("https://openrouter.ai/api/v1/audio/transcriptions")
         .set("Authorization", &format!("Bearer {}", api_key))
-        .set(
-            "Content-Type",
-            &format!("multipart/form-data; boundary={}", boundary),
-        )
-        .send_bytes(&body)
+        .set("Content-Type", "application/json")
+        .set("HTTP-Referer", "https://github.com/joymadhu49/MyVoice")
+        .set("X-Title", "MyVoice")
+        .send_json(body)
         .map_err(|e| match e {
             ureq::Error::Status(code, r) => {
                 let msg = r.into_string().unwrap_or_default();
-                format!("Groq HTTP {}: {}", code, msg)
+                format!("OpenRouter HTTP {}: {}", code, msg)
             }
-            ureq::Error::Transport(t) => format!("Groq transport: {}", t),
+            ureq::Error::Transport(t) => format!("OpenRouter transport: {}", t),
         })?;
     let text = resp.into_string().map_err(|e| e.to_string())?;
     let val: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
@@ -1201,7 +1203,7 @@ fn smart_format_text(
         return Ok(String::new());
     }
     if api_key.trim().is_empty() {
-        return Err("Groq key required for smart format".into());
+        return Err("OpenRouter key required for smart format".into());
     }
     let mut system = String::from(system_base);
     if let Some(extra) = smart_format_extra(mode_id) {
@@ -1220,9 +1222,11 @@ fn smart_format_text(
             { "role": "user", "content": trimmed },
         ],
     });
-    let resp = ureq::post("https://api.groq.com/openai/v1/chat/completions")
+    let resp = ureq::post("https://openrouter.ai/api/v1/chat/completions")
         .set("Authorization", &format!("Bearer {}", api_key))
         .set("Content-Type", "application/json")
+        .set("HTTP-Referer", "https://github.com/joymadhu49/MyVoice")
+        .set("X-Title", "MyVoice")
         .send_json(body)
         .map_err(|e| match e {
             ureq::Error::Status(code, r) => {
@@ -1296,26 +1300,26 @@ fn stop_inner(state: &AppState) -> Result<(String, u64, String, String), String>
         return Err("no speech detected".into());
     }
 
-    let (provider, language, groq_key, groq_model, settings_clone) = {
+    let (provider, language, or_key, stt_model, settings_clone) = {
         let s = state.settings.lock().unwrap();
         (
             s.provider.clone(),
             s.language.clone(),
-            s.groq_api_key.clone(),
-            s.groq_model.clone(),
+            s.openrouter_api_key.clone(),
+            s.active_stt_model.clone(),
             s.clone(),
         )
     };
 
     let voice_prompt = voice_profile_prompt(&settings_clone);
 
-    if provider == "groq" {
-        let text = transcribe_groq(
-            &pcm, 16000, &groq_key, &groq_model, &language, &voice_prompt,
+    if provider == "openrouter" {
+        let text = transcribe_openrouter(
+            &pcm, 16000, &or_key, &stt_model, &language, &voice_prompt,
         )?;
         let cleaned = filter_hallucinations(&text);
         let final_text = maybe_smart_format(&cleaned, &settings_clone);
-        return Ok((final_text, duration_ms, "groq".into(), groq_model));
+        return Ok((final_text, duration_ms, "openrouter".into(), stt_model));
     }
 
     let (model_path, model_id) = ensure_active_model(state).map_err(|e| format!("model: {}", e))?;
@@ -1378,7 +1382,7 @@ fn maybe_smart_format(raw: &str, settings: &AppSettings) -> String {
     if level == "none" {
         return raw.to_string();
     }
-    if settings.groq_api_key.trim().is_empty() {
+    if settings.openrouter_api_key.trim().is_empty() {
         return raw.to_string();
     }
     let trimmed = raw.trim();
@@ -1401,8 +1405,8 @@ fn maybe_smart_format(raw: &str, settings: &AppSettings) -> String {
     match smart_format_text(
         raw,
         &settings.active_mode,
-        &settings.groq_api_key,
-        &settings.smart_format_model,
+        &settings.openrouter_api_key,
+        &settings.active_chat_model,
         system_base,
         &style_addendum,
     ) {
@@ -1433,8 +1437,69 @@ fn record_history(text: &str, duration_ms: u64, provider: &str, model: &str) {
 }
 
 #[tauri::command]
-fn list_groq_models() -> Vec<String> {
-    GROQ_MODELS.iter().map(|s| s.to_string()).collect()
+fn list_default_stt_models() -> Vec<ModelEntry> {
+    default_stt_models()
+}
+
+#[tauri::command]
+fn list_default_chat_models() -> Vec<ModelEntry> {
+    default_chat_models()
+}
+
+#[tauri::command]
+async fn browse_openrouter_models(
+    api_key: String,
+    kind: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut req = ureq::get("https://openrouter.ai/api/v1/models");
+    if !api_key.trim().is_empty() {
+        req = req.set("Authorization", &format!("Bearer {}", api_key));
+    }
+    let resp = req.call().map_err(|e| match e {
+        ureq::Error::Status(code, r) => {
+            format!("HTTP {}: {}", code, r.into_string().unwrap_or_default())
+        }
+        ureq::Error::Transport(t) => format!("transport: {}", t),
+    })?;
+    let body = resp.into_string().map_err(|e| e.to_string())?;
+    let val: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+    let arr = val
+        .get("data")
+        .and_then(|d| d.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let kind = kind.to_lowercase();
+    let filtered: Vec<serde_json::Value> = arr
+        .into_iter()
+        .filter(|m| {
+            let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let modalities = m
+                .get("architecture")
+                .and_then(|a| a.get("input_modalities"))
+                .and_then(|im| im.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            match kind.as_str() {
+                "stt" => modalities.iter().any(|s| s == "audio") || id.contains("whisper"),
+                "chat" => !modalities.iter().any(|s| s == "audio") && !id.contains("whisper"),
+                _ => true,
+            }
+        })
+        .map(|m| {
+            let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let name = m
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&id)
+                .to_string();
+            serde_json::json!({ "id": id, "name": name })
+        })
+        .collect();
+    Ok(filtered)
 }
 
 #[tauri::command]
@@ -1452,11 +1517,11 @@ fn preview_voice_prompt(state: State<'_, AppState>) -> String {
 }
 
 #[tauri::command]
-async fn test_groq(api_key: String) -> Result<String, String> {
+async fn test_openrouter(api_key: String) -> Result<String, String> {
     if api_key.trim().is_empty() {
         return Err("API key empty".into());
     }
-    let resp = ureq::get("https://api.groq.com/openai/v1/models")
+    let resp = ureq::get("https://openrouter.ai/api/v1/auth/key")
         .set("Authorization", &format!("Bearer {}", api_key))
         .call()
         .map_err(|e| match e {
@@ -1466,7 +1531,7 @@ async fn test_groq(api_key: String) -> Result<String, String> {
             ureq::Error::Transport(t) => format!("transport: {}", t),
         })?;
     let _ = resp.into_string();
-    Ok("Groq API key works.".into())
+    Ok("OpenRouter API key works.".into())
 }
 
 fn deliver_text(text: &str, auto_paste: bool) {
@@ -2116,10 +2181,12 @@ pub fn run() {
             get_settings,
             update_settings,
             open_settings,
-            list_groq_models,
+            list_default_stt_models,
+            list_default_chat_models,
+            browse_openrouter_models,
             list_builtin_modes,
             preview_voice_prompt,
-            test_groq,
+            test_openrouter,
             list_history,
             delete_history_item,
             flag_history_item,

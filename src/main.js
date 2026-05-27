@@ -49,9 +49,13 @@ let activeTab = "home";
 
 // Settings tab elements
 let modelsEl, langEl, autoPasteEl, settingsStatusEl;
-let providerInputs, groqSection, groqKeyEl, groqModelEl, groqStatusEl, groqTestBtn;
+let providerInputs;
+let orSection, orKeyEl, orStatusEl, orTestBtn;
+let orSttActiveEl, orSttNewEl, orSttAddBtn, orSttRemoveBtn, orSttBrowseBtn;
+let orChatActiveEl, orChatNewEl, orChatAddBtn, orChatRemoveBtn, orChatBrowseBtn;
+let orBrowseModalEl, orBrowseTitleEl, orBrowseListEl, orBrowseFilterEl, orBrowseCloseBtn;
 let activeModeEl, customVocabEl, customModesListEl, addCustomModeBtn, promptPreviewEl;
-let smartFormatEl, smartFormatModelEl, autostartEl;
+let smartFormatEl, autostartEl;
 let builtinModesCache = null;
 let downloading = new Map();
 
@@ -223,7 +227,7 @@ async function refreshStats() {
 async function refreshSettingsCard() {
   try {
     const s = await invoke("get_settings");
-    const prov = s.provider === "groq" ? `Groq · ${s.groq_model}` : `Local · ${s.active_model}`;
+    const prov = s.provider === "openrouter" ? `OpenRouter · ${s.active_stt_model}` : `Local · ${s.active_model}`;
     if (providerInfo) providerInfo.textContent = `${prov} · lang=${s.language || "auto"}`;
     if (activeModeEl && !activeModeEl.options.length) {
       await populateModeDropdown(s);
@@ -493,7 +497,7 @@ async function refreshStyleTab() {
   });
   const noteEl = document.getElementById("style-groq-note");
   if (noteEl) {
-    noteEl.hidden = !!(settings.groq_api_key && settings.groq_api_key.trim());
+    noteEl.hidden = !!(settings.openrouter_api_key && settings.openrouter_api_key.trim());
   }
   applyStyleSelections(profiles || {}, activeKey, false);
   setStyleSubTab(activeStyleSub);
@@ -609,17 +613,13 @@ async function refreshSettings() {
   langEl.value = s.language || "auto";
   autoPasteEl.checked = !!s.auto_paste;
   providerInputs.forEach((r) => (r.checked = r.value === (s.provider || "local")));
-  groqKeyEl.value = s.groq_api_key || "";
-  if (groqModelEl.options.length === 0) {
-    const models = await invoke("list_groq_models");
-    groqModelEl.innerHTML = models.map((m) => `<option value="${m}">${m}</option>`).join("");
-  }
-  groqModelEl.value = s.groq_model || "whisper-large-v3-turbo";
-  groqSection.style.display = (s.provider === "groq") ? "block" : "none";
+  orKeyEl.value = s.openrouter_api_key || "";
+  renderModelSelect(orSttActiveEl, s.stt_models || [], s.active_stt_model);
+  renderModelSelect(orChatActiveEl, s.chat_models || [], s.active_chat_model);
+  orSection.style.display = (s.provider === "openrouter") ? "block" : "none";
 
   if (customVocabEl) customVocabEl.value = s.custom_vocab || "";
   if (smartFormatEl) smartFormatEl.checked = !!s.smart_format;
-  if (smartFormatModelEl) smartFormatModelEl.value = s.smart_format_model || "llama-3.1-8b-instant";
   if (autostartEl) {
     try {
       const actual = await invoke("get_autostart");
@@ -743,12 +743,12 @@ async function saveBehavior() {
   s.language = langEl.value;
   s.auto_paste = autoPasteEl.checked;
   s.provider = [...providerInputs].find((r) => r.checked)?.value || "local";
-  s.groq_api_key = groqKeyEl.value.trim();
-  s.groq_model = groqModelEl.value;
+  s.openrouter_api_key = orKeyEl.value.trim();
+  s.active_stt_model = orSttActiveEl.value || s.active_stt_model;
+  s.active_chat_model = orChatActiveEl.value || s.active_chat_model;
   if (customVocabEl) s.custom_vocab = customVocabEl.value;
   if (activeModeEl) s.active_mode = activeModeEl.value || "notes";
   if (smartFormatEl) s.smart_format = smartFormatEl.checked;
-  if (smartFormatModelEl) s.smart_format_model = smartFormatModelEl.value || "llama-3.1-8b-instant";
   if (customModesListEl) {
     const rows = customModesListEl.querySelectorAll(".custom-mode-row");
     s.custom_modes = [...rows].map((row) => ({
@@ -758,7 +758,7 @@ async function saveBehavior() {
     }));
   }
   await invoke("update_settings", { settings: s });
-  groqSection.style.display = (s.provider === "groq") ? "block" : "none";
+  orSection.style.display = (s.provider === "openrouter") ? "block" : "none";
   if (settingsStatusEl) settingsStatusEl.textContent = "Settings saved.";
   await refreshSettingsCard();
   await refreshStats();
@@ -779,16 +779,112 @@ async function onAutostartToggle() {
   }
 }
 
-async function testGroq() {
-  groqStatusEl.textContent = "Testing…";
+async function testOpenRouter() {
+  orStatusEl.textContent = "Testing…";
   try {
-    const msg = await invoke("test_groq", { apiKey: groqKeyEl.value.trim() });
-    groqStatusEl.textContent = msg;
-    groqStatusEl.style.color = "var(--good)";
+    const msg = await invoke("test_openrouter", { apiKey: orKeyEl.value.trim() });
+    orStatusEl.textContent = msg;
+    orStatusEl.style.color = "var(--good)";
   } catch (e) {
-    groqStatusEl.textContent = "Failed: " + e;
-    groqStatusEl.style.color = "var(--bad)";
+    orStatusEl.textContent = "Failed: " + e;
+    orStatusEl.style.color = "var(--bad)";
   }
+}
+
+function renderModelSelect(selectEl, entries, activeId) {
+  if (!selectEl) return;
+  selectEl.innerHTML = entries
+    .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.label || m.id)} — ${escapeHtml(m.id)}</option>`)
+    .join("");
+  if (activeId && entries.some((m) => m.id === activeId)) {
+    selectEl.value = activeId;
+  }
+}
+
+async function addModelEntry(kind, id) {
+  id = (id || "").trim();
+  if (!id) return;
+  const s = await invoke("get_settings");
+  const list = (kind === "stt" ? s.stt_models : s.chat_models) || [];
+  if (list.some((m) => m.id === id)) {
+    return;
+  }
+  const label = id.split("/").pop();
+  list.push({ id, label });
+  if (kind === "stt") {
+    s.stt_models = list;
+    s.active_stt_model = id;
+  } else {
+    s.chat_models = list;
+    s.active_chat_model = id;
+  }
+  await invoke("update_settings", { settings: s });
+  await refreshSettings();
+}
+
+async function removeActiveModelEntry(kind) {
+  const s = await invoke("get_settings");
+  const list = (kind === "stt" ? s.stt_models : s.chat_models) || [];
+  const activeId = kind === "stt" ? s.active_stt_model : s.active_chat_model;
+  const filtered = list.filter((m) => m.id !== activeId);
+  if (filtered.length === 0) {
+    if (settingsStatusEl) settingsStatusEl.textContent = "Cannot remove the only model — add another first.";
+    return;
+  }
+  if (kind === "stt") {
+    s.stt_models = filtered;
+    s.active_stt_model = filtered[0].id;
+  } else {
+    s.chat_models = filtered;
+    s.active_chat_model = filtered[0].id;
+  }
+  await invoke("update_settings", { settings: s });
+  await refreshSettings();
+}
+
+async function browseCatalog(kind) {
+  if (!orBrowseModalEl) return;
+  orBrowseTitleEl.textContent = kind === "stt" ? "OpenRouter STT catalog" : "OpenRouter chat catalog";
+  orBrowseListEl.innerHTML = '<div class="muted small" style="padding:10px;">Loading…</div>';
+  orBrowseFilterEl.value = "";
+  orBrowseModalEl.hidden = false;
+  let list = [];
+  try {
+    list = await invoke("browse_openrouter_models", {
+      apiKey: orKeyEl.value.trim(),
+      kind,
+    });
+  } catch (e) {
+    orBrowseListEl.innerHTML = `<div class="muted small" style="padding:10px;color:var(--bad);">${escapeHtml(String(e))}</div>`;
+    return;
+  }
+  const render = (filter) => {
+    const f = (filter || "").toLowerCase();
+    const items = list.filter((m) => !f || m.id.toLowerCase().includes(f) || (m.name || "").toLowerCase().includes(f));
+    if (items.length === 0) {
+      orBrowseListEl.innerHTML = '<div class="muted small" style="padding:10px;">No matches.</div>';
+      return;
+    }
+    orBrowseListEl.innerHTML = items
+      .map(
+        (m) => `<div class="row" style="padding:6px 10px;border-bottom:1px solid var(--border);gap:8px;align-items:center;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:13px;">${escapeHtml(m.name || m.id)}</div>
+            <div class="muted small" style="font-family:ui-monospace,Menlo,monospace;">${escapeHtml(m.id)}</div>
+          </div>
+          <button class="btn or-pick" type="button" data-id="${escapeHtml(m.id)}" data-name="${escapeHtml(m.name || m.id)}">Add</button>
+        </div>`
+      )
+      .join("");
+    orBrowseListEl.querySelectorAll("button.or-pick").forEach((b) =>
+      b.addEventListener("click", async () => {
+        await addModelEntry(kind, b.dataset.id);
+        orBrowseModalEl.hidden = true;
+      })
+    );
+  };
+  render("");
+  orBrowseFilterEl.oninput = (e) => render(e.target.value);
 }
 
 async function clearHistoryAction() {
@@ -833,18 +929,31 @@ window.addEventListener("DOMContentLoaded", async () => {
   autoPasteEl = document.querySelector("#auto-paste");
   settingsStatusEl = document.querySelector("#settings-status");
   providerInputs = document.querySelectorAll('input[name="provider"]');
-  groqSection = document.querySelector("#groq-section");
-  groqKeyEl = document.querySelector("#groq-key");
-  groqModelEl = document.querySelector("#groq-model");
-  groqStatusEl = document.querySelector("#groq-status");
-  groqTestBtn = document.querySelector("#groq-test");
+  orSection = document.querySelector("#openrouter-section");
+  orKeyEl = document.querySelector("#or-key");
+  orStatusEl = document.querySelector("#or-status");
+  orTestBtn = document.querySelector("#or-test");
+  orSttActiveEl = document.querySelector("#or-stt-active");
+  orSttNewEl = document.querySelector("#or-stt-new");
+  orSttAddBtn = document.querySelector("#or-stt-add");
+  orSttRemoveBtn = document.querySelector("#or-stt-remove");
+  orSttBrowseBtn = document.querySelector("#or-stt-browse");
+  orChatActiveEl = document.querySelector("#or-chat-active");
+  orChatNewEl = document.querySelector("#or-chat-new");
+  orChatAddBtn = document.querySelector("#or-chat-add");
+  orChatRemoveBtn = document.querySelector("#or-chat-remove");
+  orChatBrowseBtn = document.querySelector("#or-chat-browse");
+  orBrowseModalEl = document.querySelector("#or-browse-modal");
+  orBrowseTitleEl = document.querySelector("#or-browse-title");
+  orBrowseListEl = document.querySelector("#or-browse-list");
+  orBrowseFilterEl = document.querySelector("#or-browse-filter");
+  orBrowseCloseBtn = document.querySelector("#or-browse-close");
   activeModeEl = document.querySelector("#active-mode");
   customVocabEl = document.querySelector("#custom-vocab");
   customModesListEl = document.querySelector("#custom-modes-list");
   addCustomModeBtn = document.querySelector("#add-custom-mode");
   promptPreviewEl = document.querySelector("#prompt-preview");
   smartFormatEl = document.querySelector("#smart-format");
-  smartFormatModelEl = document.querySelector("#smart-format-model");
   autostartEl = document.querySelector("#autostart");
   if (activeModeEl) {
     activeModeEl.addEventListener("change", saveBehavior);
@@ -856,14 +965,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (addCustomModeBtn) {
     addCustomModeBtn.addEventListener("click", addCustomMode);
   }
-  const groqKeyToggle = document.querySelector("#groq-key-toggle");
-  if (groqKeyToggle) {
-    groqKeyToggle.addEventListener("click", () => {
-      const isPwd = groqKeyEl.type === "password";
-      groqKeyEl.type = isPwd ? "text" : "password";
-      groqKeyToggle.textContent = isPwd ? "Hide" : "Show";
+  const orKeyToggle = document.querySelector("#or-key-toggle");
+  if (orKeyToggle) {
+    orKeyToggle.addEventListener("click", () => {
+      const isPwd = orKeyEl.type === "password";
+      orKeyEl.type = isPwd ? "text" : "password";
+      orKeyToggle.textContent = isPwd ? "Hide" : "Show";
     });
   }
+  if (orSttAddBtn) orSttAddBtn.addEventListener("click", () => addModelEntry("stt", orSttNewEl.value));
+  if (orSttRemoveBtn) orSttRemoveBtn.addEventListener("click", () => removeActiveModelEntry("stt"));
+  if (orSttBrowseBtn) orSttBrowseBtn.addEventListener("click", () => browseCatalog("stt"));
+  if (orChatAddBtn) orChatAddBtn.addEventListener("click", () => addModelEntry("chat", orChatNewEl.value));
+  if (orChatRemoveBtn) orChatRemoveBtn.addEventListener("click", () => removeActiveModelEntry("chat"));
+  if (orChatBrowseBtn) orChatBrowseBtn.addEventListener("click", () => browseCatalog("chat"));
+  if (orBrowseCloseBtn) orBrowseCloseBtn.addEventListener("click", () => (orBrowseModalEl.hidden = true));
 
   btn.addEventListener("click", toggle);
   const cancelBtn = document.querySelector("#cancel-rec");
@@ -923,12 +1039,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   langEl.addEventListener("change", saveBehavior);
   autoPasteEl.addEventListener("change", saveBehavior);
   providerInputs.forEach((r) => r.addEventListener("change", saveBehavior));
-  groqKeyEl.addEventListener("change", saveBehavior);
-  groqKeyEl.addEventListener("blur", saveBehavior);
-  groqModelEl.addEventListener("change", saveBehavior);
-  groqTestBtn.addEventListener("click", testGroq);
+  orKeyEl.addEventListener("change", saveBehavior);
+  orKeyEl.addEventListener("blur", saveBehavior);
+  orSttActiveEl.addEventListener("change", saveBehavior);
+  orChatActiveEl.addEventListener("change", saveBehavior);
+  orTestBtn.addEventListener("click", testOpenRouter);
   if (smartFormatEl) smartFormatEl.addEventListener("change", saveBehavior);
-  if (smartFormatModelEl) smartFormatModelEl.addEventListener("change", saveBehavior);
   if (autostartEl) autostartEl.addEventListener("change", onAutostartToggle);
   document.querySelector("#clear-history").addEventListener("click", clearHistoryAction);
 

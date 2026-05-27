@@ -2597,6 +2597,7 @@ version = "0.4.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "base64 0.22.1",
  "cpal",
  "dirs 5.0.1",
  "enigo",
