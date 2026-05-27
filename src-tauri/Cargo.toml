@@ -1,6 +1,6 @@
 [package]
 name = "myvoice"
-version = "0.5.0"
+version = "0.5.1"
 description = "Privacy-first voice dictation"
 authors = ["you"]
 edition = "2021"
@@ -27,8 +27,10 @@ ureq = { version = "2", features = ["tls", "json"] }
 anyhow = "1"
 enigo = "0.2"
 arboard = "3"
-evdev = "0.12"
 base64 = "0.22"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+evdev = "0.12"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 rdev = "0.5"

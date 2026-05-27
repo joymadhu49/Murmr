@@ -143,7 +143,9 @@ struct AppSettings {
     #[serde(default)]
     autostart: bool,
     #[serde(default = "default_hotkey")]
-    hotkey: String, // "ctrl_shift_space" | "ctrl_alt_space" | "super_space" | "f9" | "right_option" | "right_ctrl"
+    hotkey: String, // preset id OR "custom"
+    #[serde(default)]
+    custom_hotkey: String, // free-form combo, e.g. "Cmd+Shift+P", "Ctrl+Alt+Space", "F9"
 }
 
 fn default_provider() -> String {
@@ -209,6 +211,7 @@ impl Default for AppSettings {
             active_style_profile: default_active_style_profile(),
             autostart: false,
             hotkey: default_hotkey(),
+            custom_hotkey: String::new(),
         }
     }
 }
@@ -1853,6 +1856,91 @@ fn do_stop(app: &AppHandle, state: &AppState) {
     }
 }
 
+fn parse_hotkey_string(s: &str) -> Option<Shortcut> {
+    let mut mods = Modifiers::empty();
+    let mut key: Option<Code> = None;
+    for raw in s.split('+') {
+        let part = raw.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let p = part.to_ascii_lowercase();
+        match p.as_str() {
+            "ctrl" | "control" => mods |= Modifiers::CONTROL,
+            "shift" => mods |= Modifiers::SHIFT,
+            "alt" | "option" | "opt" => mods |= Modifiers::ALT,
+            "cmd" | "command" | "super" | "win" | "meta" => mods |= Modifiers::SUPER,
+            _ => {
+                let c = match p.as_str() {
+                    "space" => Code::Space,
+                    "enter" | "return" => Code::Enter,
+                    "tab" => Code::Tab,
+                    "escape" | "esc" => Code::Escape,
+                    "backspace" => Code::Backspace,
+                    "delete" | "del" => Code::Delete,
+                    "up" => Code::ArrowUp,
+                    "down" => Code::ArrowDown,
+                    "left" => Code::ArrowLeft,
+                    "right" => Code::ArrowRight,
+                    "comma" | "," => Code::Comma,
+                    "period" | "." => Code::Period,
+                    "slash" | "/" => Code::Slash,
+                    "backslash" | "\\" => Code::Backslash,
+                    "minus" | "-" => Code::Minus,
+                    "equal" | "equals" | "=" => Code::Equal,
+                    "semicolon" | ";" => Code::Semicolon,
+                    "quote" | "'" => Code::Quote,
+                    "backquote" | "`" => Code::Backquote,
+                    _ => {
+                        if p.len() == 1 {
+                            let ch = p.chars().next().unwrap();
+                            if ch.is_ascii_alphabetic() {
+                                match ch {
+                                    'a' => Code::KeyA, 'b' => Code::KeyB, 'c' => Code::KeyC,
+                                    'd' => Code::KeyD, 'e' => Code::KeyE, 'f' => Code::KeyF,
+                                    'g' => Code::KeyG, 'h' => Code::KeyH, 'i' => Code::KeyI,
+                                    'j' => Code::KeyJ, 'k' => Code::KeyK, 'l' => Code::KeyL,
+                                    'm' => Code::KeyM, 'n' => Code::KeyN, 'o' => Code::KeyO,
+                                    'p' => Code::KeyP, 'q' => Code::KeyQ, 'r' => Code::KeyR,
+                                    's' => Code::KeyS, 't' => Code::KeyT, 'u' => Code::KeyU,
+                                    'v' => Code::KeyV, 'w' => Code::KeyW, 'x' => Code::KeyX,
+                                    'y' => Code::KeyY, 'z' => Code::KeyZ,
+                                    _ => return None,
+                                }
+                            } else if ch.is_ascii_digit() {
+                                match ch {
+                                    '0' => Code::Digit0, '1' => Code::Digit1, '2' => Code::Digit2,
+                                    '3' => Code::Digit3, '4' => Code::Digit4, '5' => Code::Digit5,
+                                    '6' => Code::Digit6, '7' => Code::Digit7, '8' => Code::Digit8,
+                                    '9' => Code::Digit9,
+                                    _ => return None,
+                                }
+                            } else {
+                                return None;
+                            }
+                        } else if let Some(stripped) = p.strip_prefix('f') {
+                            match stripped.parse::<u8>().ok()? {
+                                1 => Code::F1, 2 => Code::F2, 3 => Code::F3, 4 => Code::F4,
+                                5 => Code::F5, 6 => Code::F6, 7 => Code::F7, 8 => Code::F8,
+                                9 => Code::F9, 10 => Code::F10, 11 => Code::F11, 12 => Code::F12,
+                                _ => return None,
+                            }
+                        } else {
+                            return None;
+                        }
+                    }
+                };
+                if key.is_some() {
+                    return None;
+                }
+                key = Some(c);
+            }
+        }
+    }
+    let k = key?;
+    Some(Shortcut::new(if mods.is_empty() { None } else { Some(mods) }, k))
+}
+
 fn handle_hotkey(app: &AppHandle, pressed: bool) {
     let state = app.state::<AppState>();
     if pressed {
@@ -2046,7 +2134,18 @@ pub fn run() {
                     let super_space =
                         shortcut.matches(Modifiers::SUPER, Code::Space);
                     let f9 = shortcut.matches(Modifiers::empty(), Code::F9);
-                    if primary || alt || super_space || f9 {
+                    let custom_match = {
+                        let st = app.state::<AppState>();
+                        let s = st.settings.lock().unwrap();
+                        if s.custom_hotkey.trim().is_empty() {
+                            false
+                        } else {
+                            parse_hotkey_string(&s.custom_hotkey)
+                                .map(|sc| shortcut.matches(sc.mods, sc.key))
+                                .unwrap_or(false)
+                        }
+                    };
+                    if primary || alt || super_space || f9 || custom_match {
                         match event.state {
                             ShortcutState::Pressed => handle_hotkey(app, true),
                             ShortcutState::Released => handle_hotkey(app, false),
@@ -2056,24 +2155,34 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            // Register multiple bindings so at least one survives desktop-environment grabs.
-            // Ubuntu/GNOME's IBus often steals Ctrl+Shift+Space (input-method switcher).
-            let bindings: &[(&str, Shortcut)] = &[
+            let custom = {
+                let st = app.state::<AppState>();
+                let s = st.settings.lock().unwrap();
+                s.custom_hotkey.clone()
+            };
+            let mut bindings: Vec<(String, Shortcut)> = vec![
                 (
-                    "Ctrl+Shift+Space",
+                    "Ctrl+Shift+Space".into(),
                     Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space),
                 ),
                 (
-                    "Ctrl+Alt+Space",
+                    "Ctrl+Alt+Space".into(),
                     Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space),
                 ),
                 (
-                    "Super+Space",
+                    "Super+Space".into(),
                     Shortcut::new(Some(Modifiers::SUPER), Code::Space),
                 ),
-                ("F9", Shortcut::new(None, Code::F9)),
+                ("F9".into(), Shortcut::new(None, Code::F9)),
             ];
-            for (label, sc) in bindings {
+            if !custom.trim().is_empty() {
+                if let Some(sc) = parse_hotkey_string(&custom) {
+                    bindings.push((custom.clone(), sc));
+                } else {
+                    eprintln!("custom hotkey unparseable: {}", custom);
+                }
+            }
+            for (label, sc) in &bindings {
                 if let Err(e) = app.global_shortcut().register(sc.clone()) {
                     eprintln!("hotkey {label} register failed: {e}");
                 }

@@ -955,6 +955,52 @@ window.addEventListener("DOMContentLoaded", async () => {
   promptPreviewEl = document.querySelector("#prompt-preview");
   smartFormatEl = document.querySelector("#smart-format");
   autostartEl = document.querySelector("#autostart");
+  const customHotkeyEl = document.querySelector("#custom-hotkey");
+  const customHotkeyCapture = document.querySelector("#custom-hotkey-capture");
+  const customHotkeyClear = document.querySelector("#custom-hotkey-clear");
+  const customHotkeyStatus = document.querySelector("#custom-hotkey-status");
+  if (customHotkeyEl) {
+    invoke("get_settings").then((s) => { customHotkeyEl.value = s.custom_hotkey || ""; });
+    const save = async () => {
+      const s = await invoke("get_settings");
+      s.custom_hotkey = customHotkeyEl.value.trim();
+      await invoke("update_settings", { settings: s });
+      if (customHotkeyStatus) customHotkeyStatus.textContent = s.custom_hotkey
+        ? `Saved: ${s.custom_hotkey} — restart MyVoice for the new hotkey to take effect.`
+        : "Custom hotkey cleared — restart MyVoice.";
+    };
+    customHotkeyEl.addEventListener("change", save);
+    customHotkeyEl.addEventListener("blur", save);
+    if (customHotkeyCapture) {
+      customHotkeyCapture.addEventListener("click", () => {
+        customHotkeyEl.focus();
+        if (customHotkeyStatus) customHotkeyStatus.textContent = "Press the combo now…";
+        const onKey = (e) => {
+          if (!e.code || e.code.startsWith("Meta") || e.code.startsWith("Shift") || e.code.startsWith("Control") || e.code.startsWith("Alt")) return;
+          e.preventDefault();
+          const parts = [];
+          if (e.ctrlKey) parts.push("Ctrl");
+          if (e.shiftKey) parts.push("Shift");
+          if (e.altKey) parts.push(navigator.platform.toLowerCase().includes("mac") ? "Option" : "Alt");
+          if (e.metaKey) parts.push(navigator.platform.toLowerCase().includes("mac") ? "Cmd" : "Super");
+          let k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+          const map = { " ": "Space", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right" };
+          if (map[k]) k = map[k];
+          parts.push(k);
+          customHotkeyEl.value = parts.join("+");
+          document.removeEventListener("keydown", onKey, true);
+          save();
+        };
+        document.addEventListener("keydown", onKey, true);
+      });
+    }
+    if (customHotkeyClear) {
+      customHotkeyClear.addEventListener("click", () => {
+        customHotkeyEl.value = "";
+        save();
+      });
+    }
+  }
   if (activeModeEl) {
     activeModeEl.addEventListener("change", saveBehavior);
   }
