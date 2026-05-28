@@ -1,4 +1,4 @@
-# MyVoice
+# Murmr
 
 Privacy-first voice dictation — Wispr-Flow-style hold-to-talk, anywhere on macOS and Linux. Local Whisper or Groq Cloud transcription, optional AI smart-formatting, auto-paste into any focused window, history, voice profile, system tray.
 
@@ -55,7 +55,7 @@ Run dev: `npm run tauri dev`
 - **Microphone** — required.
 - **Accessibility** — required for auto-paste AND for the Right Option global hotkey. Without it, transcripts still hit the clipboard but won't auto-type and the bare-modifier hotkey won't fire (chord hotkeys still work).
 
-Unsigned build: right-click `.app` → Open. Or `xattr -dr com.apple.quarantine /Applications/myvoice.app`.
+Unsigned build: right-click `.app` → Open. Or `xattr -dr com.apple.quarantine /Applications/murmr.app`.
 
 ### Linux (Ubuntu/Debian)
 
@@ -65,8 +65,8 @@ sudo apt install -y build-essential curl wget file pkg-config cmake clang \
   librsvg2-dev libasound2-dev nodejs npm
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 . "$HOME/.cargo/env"
-git clone https://github.com/joymadhu49/MyVoice.git
-cd MyVoice
+git clone https://github.com/joymadhu49/Murmr.git
+cd Murmr
 npm install
 npm run tauri build
 # output: src-tauri/target/release/bundle/{appimage,deb}/
@@ -118,9 +118,9 @@ API key is stored locally in `settings.json` in the data dir below.
 
 | OS | Path |
 |---|---|
-| macOS | `~/Library/Application Support/myvoice/` |
-| Linux | `~/.local/share/myvoice/` |
-| Windows | `%APPDATA%\myvoice\` |
+| macOS | `~/Library/Application Support/murmr/` |
+| Linux | `~/.local/share/murmr/` |
+| Windows | `%APPDATA%\murmr\` |
 
 Files:
 - `settings.json` — provider, language, hotkey, Groq key, smart-format toggle

@@ -1,12 +1,12 @@
 [package]
-name = "myvoice"
+name = "murmr"
 version = "0.6.1"
 description = "Privacy-first voice dictation"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "myvoice_lib"
+name = "murmr_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -26,9 +26,14 @@ ureq = { version = "2", features = ["tls", "json"] }
 anyhow = "1"
 enigo = "0.2"
 arboard = "3"
+base64 = "0.22"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 evdev = "0.12"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-rdev = "0.5"
+core-graphics = "0.23"
+core-foundation = "0.9"
+# Enable Metal GPU acceleration for Whisper on Apple Silicon (huge decode speedup).
+# Target-specific feature merge: Linux/Windows keep the plain CPU build above.
+whisper-rs = { version = "0.16", features = ["metal"] }

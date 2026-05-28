@@ -10,6 +10,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SampleFormat;
+#[cfg(not(target_os = "macos"))]
 use enigo::{Enigo, Keyboard, Settings as EnigoSettings};
 use serde::{Deserialize, Serialize};
 use tauri::{
@@ -74,6 +75,20 @@ const MODELS: &[ModelInfo] = &[
         url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
         lang: "multi",
     },
+    ModelInfo {
+        id: "large-v3-turbo-q5",
+        label: "Large v3 Turbo (quantized) — 574 MB, near-cloud accuracy",
+        size_mb: 574,
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+        lang: "multi",
+    },
+    ModelInfo {
+        id: "large-v3-turbo",
+        label: "Large v3 Turbo — 1.6 GB, most accurate (offline)",
+        size_mb: 1624,
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+        lang: "multi",
+    },
 ];
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -81,6 +96,13 @@ struct CustomMode {
     id: String,
     name: String,
     terms: String,
+}
+
+/// A voice-triggered text expansion: speaking `trigger` inserts `expansion`.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+struct Snippet {
+    trigger: String,
+    expansion: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -138,6 +160,20 @@ struct AppSettings {
     hotkey: String, // preset id OR "custom"
     #[serde(default)]
     custom_hotkey: String, // free-form combo, e.g. "Cmd+Shift+P", "Ctrl+Alt+Space", "F9"
+    #[serde(default = "default_true")]
+    auto_mode: bool, // detect frontmost app -> pick best mode automatically
+    #[serde(default = "default_true")]
+    voice_commands: bool, // whole-utterance spoken commands emit keystrokes instead of text
+    #[serde(default)]
+    snippets: Vec<Snippet>, // voice-triggered text expansions
+    #[serde(default = "default_true")]
+    live_preview: bool, // stream partial transcripts to the HUD while recording
+    #[serde(default)]
+    input_device: String, // preferred mic name; empty = system default
+    #[serde(default = "default_transcription_provider")]
+    transcription_provider: String, // "local" | "cloud"
+    #[serde(default = "default_cloud_stt_model")]
+    cloud_stt_model: String, // OpenRouter audio-capable model used for cloud transcription
 }
 
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -163,6 +199,16 @@ fn default_active_style_profile() -> String {
 fn default_hotkey() -> String {
     "ctrl_shift_space".into()
 }
+fn default_true() -> bool {
+    true
+}
+fn default_transcription_provider() -> String {
+    "local".into() // privacy-first: never upload audio unless the user opts in
+}
+fn default_cloud_stt_model() -> String {
+    // Audio-capable model on OpenRouter — reuses the single OpenRouter key.
+    "google/gemini-2.5-flash".into()
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -182,6 +228,13 @@ impl Default for AppSettings {
             autostart: false,
             hotkey: default_hotkey(),
             custom_hotkey: String::new(),
+            auto_mode: true,
+            voice_commands: true,
+            snippets: Vec::new(),
+            live_preview: true,
+            input_device: String::new(),
+            transcription_provider: default_transcription_provider(),
+            cloud_stt_model: default_cloud_stt_model(),
         }
     }
 }
@@ -221,6 +274,7 @@ struct Session {
     sample_rate: Arc<Mutex<u32>>,
     channels: Arc<Mutex<u16>>,
     handle: Option<thread::JoinHandle<()>>,
+    live_handle: Option<thread::JoinHandle<()>>,
     started_at: Instant,
 }
 
@@ -234,9 +288,16 @@ struct AppState {
 }
 
 fn data_dir() -> Result<PathBuf> {
-    let dir = dirs::data_dir()
-        .ok_or_else(|| anyhow!("no data dir"))?
-        .join("myvoice");
+    let base = dirs::data_dir().ok_or_else(|| anyhow!("no data dir"))?;
+    let dir = base.join("murmr");
+    // Migrate from the old "myvoice" data dir (settings, history, downloaded models) on first run
+    // after the rename, so users don't lose state or have to re-download models.
+    if !dir.exists() {
+        let legacy = base.join("myvoice");
+        if legacy.exists() {
+            let _ = fs::rename(&legacy, &dir);
+        }
+    }
     fs::create_dir_all(&dir)?;
     Ok(dir)
 }
@@ -911,7 +972,44 @@ fn ensure_active_model(state: &AppState) -> Result<(PathBuf, String)> {
     Ok((p, id))
 }
 
-fn start_inner(state: &AppState) -> Result<(), String> {
+/// Resolve the input device: the one matching `name` if given and present, else system default.
+fn pick_input_device(name: &str) -> Option<cpal::Device> {
+    let host = cpal::default_host();
+    if !name.is_empty() {
+        if let Ok(devices) = host.input_devices() {
+            for d in devices {
+                if d.name().map(|n| n == name).unwrap_or(false) {
+                    return Some(d);
+                }
+            }
+        }
+    }
+    host.default_input_device()
+}
+
+/// List available input device names so the user can pick their primary mic.
+#[tauri::command]
+fn list_input_devices() -> Vec<String> {
+    let host = cpal::default_host();
+    let default = host
+        .default_input_device()
+        .and_then(|d| d.name().ok())
+        .unwrap_or_default();
+    let mut names: Vec<String> = host
+        .input_devices()
+        .map(|it| it.filter_map(|d| d.name().ok()).collect())
+        .unwrap_or_default();
+    // Surface the system default first.
+    names.sort();
+    names.dedup();
+    if let Some(pos) = names.iter().position(|n| n == &default) {
+        let d = names.remove(pos);
+        names.insert(0, d);
+    }
+    names
+}
+
+fn start_inner(app: &AppHandle, state: &AppState) -> Result<(), String> {
     let mut sess = state.session.lock().unwrap();
     if sess.is_some() {
         return Err("already recording".into());
@@ -925,10 +1023,10 @@ fn start_inner(state: &AppState) -> Result<(), String> {
     let samples_t = samples.clone();
     let sr_t = sr.clone();
     let ch_t = ch.clone();
+    let device_name = state.settings.lock().unwrap().input_device.clone();
 
     let handle = thread::spawn(move || {
-        let host = cpal::default_host();
-        let dev = match host.default_input_device() {
+        let dev = match pick_input_device(&device_name) {
             Some(d) => d,
             None => return,
         };
@@ -982,24 +1080,168 @@ fn start_inner(state: &AppState) -> Result<(), String> {
         drop(stream);
     });
 
+    // Live preview: stream partial transcripts to the HUD while recording (Wispr-Flow feel).
+    let live_handle = if state.settings.lock().unwrap().live_preview {
+        let app_l = app.clone();
+        let samples_l = samples.clone();
+        let sr_l = sr.clone();
+        let ch_l = ch.clone();
+        let stop_l = stop.clone();
+        Some(thread::spawn(move || {
+            live_transcribe_loop(app_l, samples_l, sr_l, ch_l, stop_l);
+        }))
+    } else {
+        None
+    };
+
     *sess = Some(Session {
         stop,
         samples,
         sample_rate: sr,
         channels: ch,
         handle: Some(handle),
+        live_handle,
         started_at: Instant::now(),
     });
     Ok(())
 }
 
-fn normalize_peak(samples: &mut [f32]) {
-    let peak = samples.iter().fold(0.0_f32, |a, &x| a.max(x.abs()));
-    if peak < 0.001 || peak >= 0.95 {
+/// Periodically decode the audio captured so far with a fast greedy pass and emit it as a
+/// `partial-transcript` event for live HUD display. Display-only — the authoritative transcript is
+/// still the high-quality beam-search pass on release. Reuses the already-loaded Whisper context;
+/// idles silently until a model is loaded.
+fn live_transcribe_loop(
+    app: AppHandle,
+    samples: Arc<Mutex<Vec<f32>>>,
+    sr: Arc<Mutex<u32>>,
+    ch: Arc<Mutex<u16>>,
+    stop: Arc<AtomicBool>,
+) {
+    let mut last_decode = Instant::now() - Duration::from_secs(2);
+    let mut last_len = 0usize;
+    let mut last_emit = String::new();
+
+    while !stop.load(Ordering::Relaxed) {
+        thread::sleep(Duration::from_millis(120));
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
+        // Cadence: don't re-decode more than ~once per 850ms.
+        if last_decode.elapsed() < Duration::from_millis(850) {
+            continue;
+        }
+        let (raw, srate, chan) = {
+            let g = samples.lock().unwrap();
+            (g.clone(), *sr.lock().unwrap(), *ch.lock().unwrap())
+        };
+        if srate == 0 || raw.len() == last_len {
+            continue;
+        }
+        last_len = raw.len();
+        let pcm = to_mono_16k(&raw, srate, chan);
+        if pcm.len() < 16000 / 2 {
+            continue; // need at least ~0.5s of audio
+        }
+
+        let state = app.state::<AppState>();
+        // Read settings BEFORE locking whisper to keep a consistent lock order with stop_inner.
+        let language = state.settings.lock().unwrap().language.clone();
+
+        let text = {
+            let wlock = state.whisper.lock().unwrap();
+            let Some((id, ctx)) = wlock.as_ref() else {
+                continue; // model not loaded yet
+            };
+            let mut sw = match ctx.create_state() {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+            params.set_print_progress(false);
+            params.set_print_special(false);
+            params.set_print_realtime(false);
+            params.set_print_timestamps(false);
+            params.set_suppress_blank(true);
+            params.set_no_context(true);
+            params.set_suppress_nst(true);
+            params.set_no_speech_thold(0.6);
+            if find_model(id).map(|m| m.lang == "en").unwrap_or(false) {
+                params.set_language(Some("en"));
+            } else if !language.is_empty() && language != "auto" {
+                params.set_language(Some(language.as_str()));
+            }
+            if sw.full(params, &pcm).is_err() {
+                continue;
+            }
+            let n = sw.full_n_segments();
+            let mut out = String::new();
+            for i in 0..n {
+                if let Some(seg) = sw.get_segment(i) {
+                    if let Ok(t) = seg.to_str() {
+                        out.push_str(t);
+                    }
+                }
+            }
+            out.trim().to_string()
+        };
+
+        last_decode = Instant::now();
+        if !text.is_empty() && text != last_emit {
+            last_emit = text.clone();
+            let _ = app.emit("partial-transcript", &text);
+        }
+    }
+}
+
+/// Remove DC offset (constant bias some mics/ADCs add). Subtracts the mean.
+fn remove_dc(samples: &mut [f32]) {
+    if samples.is_empty() {
         return;
     }
-    let gain = 0.95 / peak;
-    let gain = gain.min(8.0); // cap gain to avoid amplifying pure noise
+    let mean = samples.iter().sum::<f32>() / samples.len() as f32;
+    for s in samples.iter_mut() {
+        *s -= mean;
+    }
+}
+
+/// One-pole high-pass filter: cuts low-frequency rumble, hum, and handling noise below `cutoff_hz`.
+/// Speech energy lives above ~100 Hz, so an 80 Hz cutoff cleans up the signal without touching it.
+fn high_pass(samples: &mut [f32], sample_rate: u32, cutoff_hz: f32) {
+    if samples.len() < 2 {
+        return;
+    }
+    let rc = 1.0 / (2.0 * std::f32::consts::PI * cutoff_hz);
+    let dt = 1.0 / sample_rate as f32;
+    let alpha = rc / (rc + dt);
+    let mut prev_in = samples[0];
+    let mut prev_out = 0.0_f32;
+    for s in samples.iter_mut() {
+        let x = *s;
+        let y = alpha * (prev_out + x - prev_in);
+        prev_in = x;
+        prev_out = y;
+        *s = y;
+    }
+}
+
+/// Normalize toward a target RMS (loudness) instead of peak. Robust for quiet mics — a single loud
+/// transient no longer starves the gain — with a peak limiter and a noise-floor guard so near
+/// silence isn't blown up into hiss.
+fn normalize_rms(samples: &mut [f32]) {
+    if samples.is_empty() {
+        return;
+    }
+    let rms = (samples.iter().map(|x| x * x).sum::<f32>() / samples.len() as f32).sqrt();
+    if rms < 1e-4 {
+        return; // essentially silent — don't amplify noise
+    }
+    let target = 0.12_f32; // ~ -18 dBFS, a healthy speech level for Whisper
+    let mut gain = (target / rms).clamp(0.3, 12.0);
+    // Never let the loudest sample clip.
+    let peak = samples.iter().fold(0.0_f32, |a, &x| a.max(x.abs()));
+    if peak > 0.0 && peak * gain > 0.97 {
+        gain = 0.97 / peak;
+    }
     for s in samples.iter_mut() {
         *s *= gain;
     }
@@ -1079,6 +1321,10 @@ fn style_profile_addendum(key: &str, p: &StyleProfile) -> String {
     format!(" Context: {} {}", context, variant)
 }
 
+/// Appended to every cleanup system prompt. Teaches the model to resolve spoken self-corrections
+/// (Wispr Flow "backtracking") and to honor spoken punctuation/formatting cues.
+const SELF_CORRECT_CLAUSE: &str = "Resolve spoken self-corrections: when the speaker restates or corrects themselves (e.g. \"meet at 2, actually 3\", \"the red — no, the blue one\", \"send it to John, I mean Jane\"), keep only the corrected final version and drop the abandoned attempt. Honor spoken punctuation and formatting commands by converting them into the actual mark or layout instead of writing the words: \"new line\" / \"next line\" -> a line break, \"new paragraph\" -> a blank line, \"period\"/\"full stop\" -> \".\", \"comma\" -> \",\", \"question mark\" -> \"?\", \"exclamation mark\" -> \"!\", \"open/close quote\" -> quotation marks, \"bullet point\"/\"dash\" -> a list item. Only treat these as commands when they are clearly meta (not part of the sentence's meaning).";
+
 fn smart_format_extra(mode_id: &str) -> Option<&'static str> {
     match mode_id {
         "email" => Some("Context: this dictation will become email body text. Preserve professional register if present. Treat greetings (\"hi John\") and sign-offs (\"thanks\", \"best regards\") as their own line."),
@@ -1104,6 +1350,8 @@ fn smart_format_text(
         return Err("API key required for smart format".into());
     }
     let mut system = String::from(system_base);
+    system.push(' ');
+    system.push_str(SELF_CORRECT_CLAUSE);
     if let Some(extra) = smart_format_extra(mode_id) {
         system.push(' ');
         system.push_str(extra);
@@ -1124,8 +1372,8 @@ fn smart_format_text(
     let resp = ureq::post(&url)
         .set("Authorization", &format!("Bearer {}", api_key))
         .set("Content-Type", "application/json")
-        .set("HTTP-Referer", "https://github.com/joymadhu49/MyVoice")
-        .set("X-Title", "MyVoice")
+        .set("HTTP-Referer", "https://github.com/joymadhu49/Murmr")
+        .set("X-Title", "Murmr")
         .send_json(body)
         .map_err(|e| match e {
             ureq::Error::Status(code, r) => {
@@ -1175,37 +1423,177 @@ fn to_mono_16k(input: &[f32], sample_rate: u32, channels: u16) -> Vec<f32> {
     out
 }
 
-fn stop_inner(state: &AppState) -> Result<(String, u64, String, String), String> {
-    let sess = {
-        let mut g = state.session.lock().unwrap();
-        g.take()
+/// macOS: bundle id of the frontmost (focused) app, via System Events. Used for app-aware mode.
+/// Needs Automation/Accessibility permission (already required for paste). Returns None on failure.
+#[cfg(target_os = "macos")]
+fn frontmost_bundle_id() -> Option<String> {
+    let out = std::process::Command::new("osascript")
+        .args([
+            "-e",
+            "tell application \"System Events\" to get bundle identifier of first application process whose frontmost is true",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let id = String::from_utf8_lossy(&out.stdout).trim().to_lowercase();
+    if id.is_empty() {
+        None
+    } else {
+        Some(id)
+    }
+}
+
+/// Map the focused app to the best built-in mode id. Wispr-Flow-style auto context.
+#[cfg(target_os = "macos")]
+fn auto_mode_for_app(bundle_id: &str) -> Option<&'static str> {
+    let code = [
+        "com.apple.terminal",
+        "com.googlecode.iterm2",
+        "com.microsoft.vscode",
+        "com.todesktop.230313mzl4w4u92", // Cursor
+        "com.exafunction.windsurf",
+        "com.apple.dt.xcode",
+        "dev.zed.zed",
+        "com.sublimetext",
+        "com.jetbrains",
+    ];
+    let email = [
+        "com.apple.mail",
+        "com.microsoft.outlook",
+        "com.readdle.smartemail",
+        "com.airmailapp",
+    ];
+    let ai = [
+        "com.openai.chat",
+        "com.anthropic.claude",
+        "com.anthropic.claudefordesktop",
+    ];
+    if code.iter().any(|p| bundle_id.contains(p)) {
+        Some("code")
+    } else if email.iter().any(|p| bundle_id.contains(p)) {
+        Some("email")
+    } else if ai.iter().any(|p| bundle_id.contains(p)) {
+        Some("ai_prompt")
+    } else {
+        // chat/docs/everything else -> general notes register
+        Some("notes")
+    }
+}
+
+/// Resolve the mode to use for this dictation: the detected app mode when auto_mode is on and a
+/// match exists, otherwise the user's chosen mode. No-op off macOS.
+fn effective_mode(settings: &AppSettings) -> String {
+    #[cfg(target_os = "macos")]
+    {
+        if settings.auto_mode {
+            if let Some(id) = frontmost_bundle_id().and_then(|b| auto_mode_for_app(&b)) {
+                return id.to_string();
+            }
+        }
+    }
+    settings.active_mode.clone()
+}
+
+/// Encode 16 kHz mono f32 PCM as a 16-bit WAV byte buffer (for cloud STT multipart upload).
+fn encode_wav_16k_mono(pcm: &[f32]) -> Vec<u8> {
+    let sample_rate = 16000u32;
+    let bits = 16u16;
+    let channels = 1u16;
+    let byte_rate = sample_rate * channels as u32 * (bits / 8) as u32;
+    let block_align = channels * (bits / 8);
+    let data_len = (pcm.len() * 2) as u32;
+    let mut b = Vec::with_capacity(44 + pcm.len() * 2);
+    b.extend_from_slice(b"RIFF");
+    b.extend_from_slice(&(36 + data_len).to_le_bytes());
+    b.extend_from_slice(b"WAVE");
+    b.extend_from_slice(b"fmt ");
+    b.extend_from_slice(&16u32.to_le_bytes());
+    b.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    b.extend_from_slice(&channels.to_le_bytes());
+    b.extend_from_slice(&sample_rate.to_le_bytes());
+    b.extend_from_slice(&byte_rate.to_le_bytes());
+    b.extend_from_slice(&block_align.to_le_bytes());
+    b.extend_from_slice(&bits.to_le_bytes());
+    b.extend_from_slice(b"data");
+    b.extend_from_slice(&data_len.to_le_bytes());
+    for &s in pcm {
+        let v = (s.clamp(-1.0, 1.0) * 32767.0) as i16;
+        b.extend_from_slice(&v.to_le_bytes());
+    }
+    b
+}
+
+/// Should this dictation be transcribed in the cloud? Only when the user picked "cloud" AND the
+/// OpenRouter key is set. Cloud failures (e.g. offline) fall back to local in stop_inner.
+fn want_cloud_transcription(settings: &AppSettings) -> bool {
+    settings.transcription_provider == "cloud" && !settings.api_key.trim().is_empty()
+}
+
+/// Transcribe via OpenRouter using an audio-capable chat model (input_audio content). Reuses the
+/// single OpenRouter key — no separate STT provider. Returns recognized text; errors bubble up so
+/// the caller can fall back to local.
+fn cloud_transcribe(pcm: &[f32], settings: &AppSettings) -> Result<String, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let wav = encode_wav_16k_mono(pcm);
+    let b64 = STANDARD.encode(&wav);
+    let model = if settings.cloud_stt_model.trim().is_empty() {
+        default_cloud_stt_model()
+    } else {
+        settings.cloud_stt_model.clone()
     };
-    let mut sess = sess.ok_or_else(|| "not recording".to_string())?;
-    sess.stop.store(true, Ordering::Relaxed);
-    if let Some(h) = sess.handle.take() {
-        let _ = h.join();
-    }
-    let raw = sess.samples.lock().unwrap().clone();
-    let sr = *sess.sample_rate.lock().unwrap();
-    let ch = *sess.channels.lock().unwrap();
-    let duration_ms = sess.started_at.elapsed().as_millis() as u64;
-    if duration_ms < 150 || raw.is_empty() {
-        return Err("too short".into());
-    }
-    let mut pcm = to_mono_16k(&raw, sr, ch);
-    normalize_peak(&mut pcm);
-    let pcm = trim_silence(&pcm, 16000);
-    if pcm.len() < 16000 / 8 {
-        return Err("no speech detected".into());
-    }
 
-    let (language, settings_clone) = {
-        let s = state.settings.lock().unwrap();
-        (s.language.clone(), s.clone())
-    };
+    let instruction = "Transcribe the audio verbatim. Output ONLY the exact spoken words as text — \
+        no commentary, no quotes, no labels, no timestamps. If there is no speech, output nothing.";
+    let body = serde_json::json!({
+        "model": model,
+        "temperature": 0.0,
+        "messages": [{
+            "role": "user",
+            "content": [
+                { "type": "text", "text": instruction },
+                { "type": "input_audio", "input_audio": { "data": b64, "format": "wav" } }
+            ]
+        }],
+    });
 
-    let voice_prompt = voice_profile_prompt(&settings_clone);
+    let url = format!("{}/chat/completions", OPENROUTER_BASE_URL);
+    let resp = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {}", settings.api_key))
+        .set("Content-Type", "application/json")
+        .set("HTTP-Referer", "https://github.com/joymadhu49/Murmr")
+        .set("X-Title", "Murmr")
+        .send_json(body)
+        .map_err(|e| match e {
+            ureq::Error::Status(code, r) => {
+                format!("cloud STT HTTP {}: {}", code, r.into_string().unwrap_or_default())
+            }
+            ureq::Error::Transport(t) => format!("cloud STT transport: {}", t),
+        })?;
+    let text = resp.into_string().map_err(|e| e.to_string())?;
+    let val: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let out = val
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|s| s.as_str())
+        .map(|s| s.trim().trim_matches('"').trim().to_string())
+        .unwrap_or_default();
+    if out.is_empty() {
+        return Err("cloud STT returned empty text".into());
+    }
+    Ok(out)
+}
 
+/// Local Whisper decode. Returns (text, model_id). Extracted so stop_inner can pick local vs cloud.
+fn local_transcribe(
+    state: &AppState,
+    pcm: &[f32],
+    language: &str,
+    voice_prompt: &str,
+) -> Result<(String, String), String> {
     let (model_path, model_id) = ensure_active_model(state).map_err(|e| format!("model: {}", e))?;
 
     let mut wlock = state.whisper.lock().unwrap();
@@ -1233,20 +1621,32 @@ fn stop_inner(state: &AppState) -> Result<(String, u64, String, String), String>
     params.set_print_timestamps(false);
     params.set_suppress_blank(true);
     params.set_no_context(true);
+    // Noise/music robustness: suppress non-speech tokens, raise the no-speech bar, and use
+    // greedy temperature with fallback so low-confidence (noisy) audio is rejected rather than
+    // hallucinated into lyrics/garbage.
+    params.set_suppress_nst(true);
+    params.set_temperature(0.0);
+    params.set_temperature_inc(0.2);
+    params.set_no_speech_thold(0.6);
+    params.set_entropy_thold(2.4);
+    params.set_logprob_thold(-1.0);
+    if let Ok(n) = std::thread::available_parallelism() {
+        params.set_n_threads((n.get() as i32).min(8));
+    }
     if !voice_prompt.is_empty() {
-        params.set_initial_prompt(&voice_prompt);
+        params.set_initial_prompt(voice_prompt);
     }
     let lang_opt = if language.is_empty() || language == "auto" {
         None
     } else {
-        Some(language.as_str())
+        Some(language)
     };
     if find_model(&model_id).map(|m| m.lang == "en").unwrap_or(false) {
         params.set_language(Some("en"));
     } else {
         params.set_language(lang_opt);
     }
-    state_w.full(params, &pcm).map_err(|e| e.to_string())?;
+    state_w.full(params, pcm).map_err(|e| e.to_string())?;
     let n = state_w.full_n_segments();
     let mut out = String::new();
     for i in 0..n {
@@ -1256,9 +1656,79 @@ fn stop_inner(state: &AppState) -> Result<(String, u64, String, String), String>
             }
         }
     }
-    let cleaned = filter_hallucinations(out.trim());
-    let final_text = maybe_smart_format(&cleaned, &settings_clone);
-    Ok((final_text, duration_ms, "local".into(), model_id))
+    Ok((out.trim().to_string(), model_id))
+}
+
+fn stop_inner(state: &AppState) -> Result<(Delivery, u64, String, String), String> {
+    let sess = {
+        let mut g = state.session.lock().unwrap();
+        g.take()
+    };
+    let mut sess = sess.ok_or_else(|| "not recording".to_string())?;
+    sess.stop.store(true, Ordering::Relaxed);
+    if let Some(h) = sess.handle.take() {
+        let _ = h.join();
+    }
+    // Join the live-preview thread before the final decode so it isn't holding the Whisper lock.
+    if let Some(h) = sess.live_handle.take() {
+        let _ = h.join();
+    }
+    let raw = sess.samples.lock().unwrap().clone();
+    let sr = *sess.sample_rate.lock().unwrap();
+    let ch = *sess.channels.lock().unwrap();
+    let duration_ms = sess.started_at.elapsed().as_millis() as u64;
+    if duration_ms < 150 || raw.is_empty() {
+        return Err("too short".into());
+    }
+    let mut pcm = to_mono_16k(&raw, sr, ch);
+    remove_dc(&mut pcm);
+    high_pass(&mut pcm, 16000, 80.0);
+    normalize_rms(&mut pcm);
+    let pcm = trim_silence(&pcm, 16000);
+    if pcm.len() < 16000 / 8 {
+        return Err("no speech detected".into());
+    }
+
+    let (language, mut settings_clone) = {
+        let s = state.settings.lock().unwrap();
+        (s.language.clone(), s.clone())
+    };
+    // App-aware mode: pick the mode from the focused app before building prompts.
+    settings_clone.active_mode = effective_mode(&settings_clone);
+
+    let voice_prompt = voice_profile_prompt(&settings_clone);
+
+    // Cloud STT (if opted in + key set), else local. Cloud failures fall back to local.
+    let (raw_text, provider_label, model_label, used_cloud) =
+        if want_cloud_transcription(&settings_clone) {
+            match cloud_transcribe(&pcm, &settings_clone) {
+                Ok(t) => (t, "cloud".into(), settings_clone.cloud_stt_model.clone(), true),
+                Err(e) => {
+                    eprintln!("cloud STT failed ({e}); falling back to local");
+                    let (t, id) = local_transcribe(state, &pcm, &language, &voice_prompt)?;
+                    (t, "local".into(), id, false)
+                }
+            }
+        } else {
+            let (t, id) = local_transcribe(state, &pcm, &language, &voice_prompt)?;
+            (t, "local".into(), id, false)
+        };
+
+    let cleaned = filter_hallucinations(raw_text.trim());
+    // Whole-utterance voice command? Emit a keystroke instead of pasting text.
+    if settings_clone.voice_commands {
+        if let Some(cmd) = detect_command(&cleaned) {
+            return Ok((Delivery::Command(cmd), duration_ms, provider_label, model_label));
+        }
+    }
+    // Cloud STT output is already clean — skip the LLM polish (it's a crutch for local models).
+    let formatted = if used_cloud {
+        cleaned
+    } else {
+        maybe_smart_format(&cleaned, &settings_clone)
+    };
+    let expanded = expand_snippets(&formatted, &settings_clone.snippets);
+    Ok((Delivery::Text(expanded), duration_ms, provider_label, model_label))
 }
 
 fn maybe_smart_format(raw: &str, settings: &AppSettings) -> String {
@@ -1318,6 +1788,90 @@ fn record_history(text: &str, duration_ms: u64, provider: &str, model: &str) {
         flagged: false,
     };
     let _ = append_history(&entry);
+}
+
+/// Words that appear in `new` but not `old` and look like names/jargon (capitalized, ALL-CAPS, or
+/// camelCase). These are the corrections worth teaching the recognizer. Capped to avoid runaway.
+fn harvest_terms(old: &str, new: &str) -> Vec<String> {
+    let split = |s: &str| -> HashSet<String> {
+        s.split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .map(|w| w.to_lowercase())
+            .collect()
+    };
+    let old_set = split(old);
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for w in new.split(|c: char| !(c.is_alphanumeric())) {
+        if w.len() < 2 {
+            continue;
+        }
+        let lw = w.to_lowercase();
+        if old_set.contains(&lw) {
+            continue;
+        }
+        let lead_upper = w.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+        let inner_upper = w.chars().skip(1).any(|c| c.is_uppercase());
+        let has_digit = w.chars().any(|c| c.is_ascii_digit());
+        // Capitalized / camelCase / contains digits = likely a name, acronym, or identifier.
+        if (lead_upper || inner_upper || has_digit) && seen.insert(lw) {
+            out.push(w.to_string());
+            if out.len() >= 8 {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// Edit a past transcript and auto-learn the corrected terms into the custom vocabulary, so the
+/// recognizer biases toward them next time (Wispr-Flow-style self-learning dictionary).
+#[tauri::command]
+fn correct_transcript(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    new_text: String,
+) -> Result<(), String> {
+    let mut items = read_history_all();
+    let mut old_text: Option<String> = None;
+    for e in items.iter_mut() {
+        if e.id == id {
+            old_text = Some(e.text.clone());
+            e.text = new_text.clone();
+            e.words = count_words(&new_text);
+        }
+    }
+    if old_text.is_none() {
+        return Err("history entry not found".into());
+    }
+    write_history_all(&items).map_err(|e| e.to_string())?;
+
+    let learned = harvest_terms(old_text.as_deref().unwrap_or(""), &new_text);
+    if !learned.is_empty() {
+        let snapshot = {
+            let mut g = state.settings.lock().unwrap();
+            let mut existing: HashSet<String> = g
+                .custom_vocab
+                .lines()
+                .map(|l| l.trim().to_lowercase())
+                .filter(|l| !l.is_empty())
+                .collect();
+            for t in learned {
+                if existing.insert(t.to_lowercase()) {
+                    if !g.custom_vocab.is_empty() && !g.custom_vocab.ends_with('\n') {
+                        g.custom_vocab.push('\n');
+                    }
+                    g.custom_vocab.push_str(&t);
+                }
+            }
+            g.clone()
+        };
+        save_settings(&snapshot).map_err(|e| e.to_string())?;
+        let _ = app.emit("settings-changed", &snapshot);
+    }
+    let _ = app.emit("history-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
@@ -1435,10 +1989,165 @@ fn deliver_text(text: &str, auto_paste: bool) {
         }
     }
 
+    // macOS: synthesize Cmd+V to paste the clipboard we set above, dropping the text into the
+    // focused field at the caret — the "force-paste" that needs Accessibility permission.
+    // See post_key_combo for why we post raw CGEvents instead of using enigo.
+    #[cfg(target_os = "macos")]
+    {
+        const KVK_ANSI_V: u16 = 9;
+        post_key_combo(KVK_ANSI_V, MOD_COMMAND);
+        return;
+    }
+
     // Last resort: enigo per-char synthesis (X11 native; Wayland needs libei)
+    #[cfg(not(target_os = "macos"))]
     if let Ok(mut enigo) = Enigo::new(&EnigoSettings::default()) {
         let _ = enigo.text(text);
     }
+}
+
+// Modifier bitmask flags for post_key_combo (subset of CGEventFlags we use).
+#[cfg(target_os = "macos")]
+const MOD_NONE: u64 = 0;
+#[cfg(target_os = "macos")]
+const MOD_COMMAND: u64 = 1 << 20; // kCGEventFlagMaskCommand
+#[cfg(target_os = "macos")]
+const MOD_SHIFT: u64 = 1 << 17; // kCGEventFlagMaskShift
+#[cfg(target_os = "macos")]
+const MOD_OPTION: u64 = 1 << 19; // kCGEventFlagMaskAlternate
+
+/// Post a key-down + key-up CGEvent for `keycode` with the given modifier flags.
+///
+/// We deliberately post raw CGEvents rather than using enigo: enigo's `Key::Unicode` path does a
+/// layout->keycode lookup through the TIS input-source APIs, which assert they run on the main
+/// dispatch queue. This runs on a worker thread, so that lookup would trap (SIGTRAP) and crash the
+/// app. Raw keycodes need no TIS lookup and post fine from any thread.
+#[cfg(target_os = "macos")]
+fn post_key_combo(keycode: u16, modifier_bits: u64) {
+    use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+
+    if let Ok(src) = CGEventSource::new(CGEventSourceStateID::CombinedSessionState) {
+        let flags = CGEventFlags::from_bits_truncate(modifier_bits);
+        for keydown in [true, false] {
+            if let Ok(ev) = CGEvent::new_keyboard_event(src.clone(), keycode, keydown) {
+                ev.set_flags(flags);
+                ev.post(CGEventTapLocation::HID);
+            }
+        }
+    }
+}
+
+/// What a finished dictation resolves to: text to paste, or a command to execute.
+enum Delivery {
+    Text(String),
+    Command(VoiceCommand),
+}
+
+/// A whole-utterance spoken command that emits a keystroke instead of pasting text.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum VoiceCommand {
+    SelectAll,
+    Copy,
+    Cut,
+    Paste,
+    Undo,
+    Redo,
+    DeleteWord,
+    Enter,
+    Newline,
+    Escape,
+    Tab,
+}
+
+/// Match a transcript against the built-in command phrases. Only fires when the entire utterance
+/// is the command (after stripping punctuation/whitespace), so normal dictation is never eaten.
+fn detect_command(text: &str) -> Option<VoiceCommand> {
+    let norm: String = text
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect();
+    let norm = norm.split_whitespace().collect::<Vec<_>>().join(" ");
+    use VoiceCommand::*;
+    let cmd = match norm.as_str() {
+        "select all" | "select everything" => SelectAll,
+        "copy" | "copy that" | "copy this" => Copy,
+        "cut" | "cut that" => Cut,
+        "paste" | "paste that" | "paste it" => Paste,
+        "undo" | "undo that" => Undo,
+        "redo" | "redo that" => Redo,
+        "delete that" | "scratch that" | "delete word" | "delete the last word" => DeleteWord,
+        "press enter" | "hit enter" | "submit" | "send it" | "send message" => Enter,
+        "new line" | "next line" => Newline,
+        "press escape" | "escape" | "cancel that" => Escape,
+        "press tab" | "tab" => Tab,
+        _ => return None,
+    };
+    Some(cmd)
+}
+
+/// Emit the keystroke(s) for a voice command. macOS only (raw CGEvent keycodes).
+#[cfg(target_os = "macos")]
+fn emit_command(cmd: VoiceCommand) {
+    use VoiceCommand::*;
+    // macOS virtual keycodes (kVK_*).
+    match cmd {
+        SelectAll => post_key_combo(0, MOD_COMMAND),  // A
+        Copy => post_key_combo(8, MOD_COMMAND),       // C
+        Cut => post_key_combo(7, MOD_COMMAND),        // X
+        Paste => post_key_combo(9, MOD_COMMAND),      // V
+        Undo => post_key_combo(6, MOD_COMMAND),       // Z
+        Redo => post_key_combo(6, MOD_COMMAND | MOD_SHIFT),
+        DeleteWord => post_key_combo(51, MOD_OPTION), // Option+Delete = delete previous word
+        Enter => post_key_combo(36, MOD_NONE),        // Return
+        Newline => post_key_combo(36, MOD_NONE),
+        Escape => post_key_combo(53, MOD_NONE),
+        Tab => post_key_combo(48, MOD_NONE),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn emit_command(_cmd: VoiceCommand) {}
+
+/// Replace any snippet trigger phrases found in `text` with their expansions.
+/// Case-insensitive, bounded by non-alphanumeric edges so "sig" won't match inside "signal".
+fn expand_snippets(text: &str, snippets: &[Snippet]) -> String {
+    let mut out = text.to_string();
+    for s in snippets {
+        let trigger = s.trigger.trim();
+        if trigger.is_empty() {
+            continue;
+        }
+        out = replace_phrase_ci(&out, trigger, &s.expansion);
+    }
+    out
+}
+
+/// Case-insensitive, word-boundary-aware replace of every `needle` occurrence with `repl`.
+fn replace_phrase_ci(haystack: &str, needle: &str, repl: &str) -> String {
+    let hay_lower = haystack.to_lowercase();
+    let need_lower = needle.to_lowercase();
+    let hb = haystack.as_bytes();
+    let mut result = String::with_capacity(haystack.len());
+    let mut i = 0usize;
+    while i < haystack.len() {
+        if hay_lower[i..].starts_with(&need_lower) {
+            let end = i + need_lower.len();
+            let before_ok = i == 0 || !hb[i - 1].is_ascii_alphanumeric();
+            let after_ok = end >= hb.len() || !hb[end].is_ascii_alphanumeric();
+            if before_ok && after_ok {
+                result.push_str(repl);
+                i = end;
+                continue;
+            }
+        }
+        let ch = haystack[i..].chars().next().unwrap();
+        result.push(ch);
+        i += ch.len_utf8();
+    }
+    result
 }
 
 fn position_hud(app: &AppHandle) {
@@ -1492,9 +2201,54 @@ fn open_settings(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn start_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    start_inner(&state)?;
+    start_inner(&app, &state)?;
     show_hud(&app, "recording");
     Ok(())
+}
+
+/// Common tail for a finished dictation, shared by the async command and the push-to-talk path.
+/// Pastes text (and records history) or executes a voice command, after the HUD hides and focus
+/// returns to the target window. Returns a label for the UI.
+fn finish_dictation(
+    app: &AppHandle,
+    delivery: Delivery,
+    dur: u64,
+    provider: String,
+    model: String,
+    auto_paste: bool,
+) -> String {
+    match delivery {
+        Delivery::Text(text) => {
+            record_history(&text, dur, &provider, &model);
+            let _ = app.emit("transcript", &text);
+            let _ = app.emit("history-changed", ());
+            let _ = app.emit("rec-state", "done");
+            let app2 = app.clone();
+            let t = text.clone();
+            thread::spawn(move || {
+                // Paste ASAP. The HUD is a non-activating overlay, so the target window never
+                // lost focus — no need to wait for it to "return". Tiny settle only.
+                thread::sleep(Duration::from_millis(60));
+                deliver_text(&t, auto_paste);
+                thread::sleep(Duration::from_millis(350)); // keep "Pasted" visible briefly
+                hide_hud(&app2);
+            });
+            text
+        }
+        Delivery::Command(cmd) => {
+            let label = format!("⌘ {:?}", cmd);
+            let _ = app.emit("transcript", &label);
+            let _ = app.emit("rec-state", "done");
+            let app2 = app.clone();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(60));
+                emit_command(cmd);
+                thread::sleep(Duration::from_millis(350));
+                hide_hud(&app2);
+            });
+            label
+        }
+    }
 }
 
 #[tauri::command]
@@ -1503,20 +2257,8 @@ async fn stop_recording(app: AppHandle, state: State<'_, AppState>) -> Result<St
     let auto_paste = state.settings.lock().unwrap().auto_paste;
     let res = stop_inner(&state);
     match res {
-        Ok((text, dur, provider, model)) => {
-            record_history(&text, dur, &provider, &model);
-            let _ = app.emit("transcript", &text);
-            let _ = app.emit("history-changed", ());
-            let _ = app.emit("rec-state", "done");
-            let app2 = app.clone();
-            let t = text.clone();
-            thread::spawn(move || {
-                thread::sleep(Duration::from_millis(300)); // brief "done" flash
-                hide_hud(&app2);
-                thread::sleep(Duration::from_millis(500)); // let focus return
-                deliver_text(&t, auto_paste);
-            });
-            Ok(text)
+        Ok((delivery, dur, provider, model)) => {
+            Ok(finish_dictation(&app, delivery, dur, provider, model, auto_paste))
         }
         Err(e) => {
             let _ = app.emit("rec-error", &e);
@@ -1646,19 +2388,8 @@ fn do_stop(app: &AppHandle, state: &AppState) {
     let _ = app.emit("rec-state", "transcribing");
     let auto_paste = state.settings.lock().unwrap().auto_paste;
     match stop_inner(state) {
-        Ok((text, dur, provider, model)) => {
-            record_history(&text, dur, &provider, &model);
-            let _ = app.emit("transcript", &text);
-            let _ = app.emit("history-changed", ());
-            let _ = app.emit("rec-state", "done");
-            let app2 = app.clone();
-            let t = text.clone();
-            thread::spawn(move || {
-                thread::sleep(Duration::from_millis(300)); // brief "done" flash
-                hide_hud(&app2);
-                thread::sleep(Duration::from_millis(500)); // let target window regain focus
-                deliver_text(&t, auto_paste);
-            });
+        Ok((delivery, dur, provider, model)) => {
+            finish_dictation(app, delivery, dur, provider, model, auto_paste);
         }
         Err(e) => {
             let _ = app.emit("rec-error", &e);
@@ -1786,7 +2517,7 @@ fn handle_hotkey(app: &AppHandle, pressed: bool) {
             return;
         }
 
-        let _ = start_inner(&state);
+        let _ = start_inner(app, &state);
         show_hud(app, "recording");
     } else {
         state.hotkey_held.store(false, Ordering::SeqCst);
@@ -1817,33 +2548,108 @@ fn handle_hotkey(app: &AppHandle, pressed: bool) {
     }
 }
 
+/// Ask macOS to surface the Accessibility (TCC) prompt if the app isn't yet trusted.
+/// Accessibility is what authorizes us to post synthetic key events (the Cmd+V auto-paste)
+/// and to receive the global Right Option hotkey via the event tap. There is no Info.plist
+/// usage string for it — the app must trigger the prompt at runtime via the Accessibility API.
+/// Safe to call every launch: if already trusted it's a no-op and shows nothing.
+#[cfg(target_os = "macos")]
+fn ensure_accessibility_permission() {
+    use core_foundation::base::{CFType, TCFType};
+    use core_foundation::boolean::CFBoolean;
+    use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
+    use core_foundation::string::{CFString, CFStringRef};
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
+        static kAXTrustedCheckOptionPrompt: CFStringRef;
+    }
+
+    unsafe {
+        let key = CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt);
+        let val = CFBoolean::true_value();
+        let opts: CFDictionary<CFType, CFType> =
+            CFDictionary::from_CFType_pairs(&[(key.as_CFType(), val.as_CFType())]);
+        let trusted = AXIsProcessTrustedWithOptions(opts.as_concrete_TypeRef());
+        if !trusted {
+            eprintln!(
+                "Accessibility not granted — auto-paste and the Right Option hotkey are disabled \
+                 until you enable Murmr in System Settings → Privacy & Security → Accessibility."
+            );
+        }
+    }
+}
+
 /// macOS bare-modifier hotkey listener (Right Option hold-to-talk — Wispr Flow default).
-/// Tauri global-shortcut can't bind a lone modifier key, so we tap CGEvent via rdev.
+/// Tauri global-shortcut can't bind a lone modifier key, so we tap CGEvents directly.
+///
+/// We deliberately do NOT use `rdev` here: its event-tap callback calls the TIS input-source
+/// APIs (`string_from_code` -> `TSMGetInputSourceProperty`) to compute a Unicode key name for
+/// every event. On recent macOS those APIs assert they run on the main dispatch queue, so when
+/// invoked from the tap's background thread they hit `dispatch_assert_queue` and trap (SIGTRAP),
+/// crashing the app on the first keystroke. We only need the keycode + modifier flag, so we read
+/// the raw `CGEvent` and never touch TIS.
+///
 /// Requires Accessibility permission (same as auto-paste).
 #[cfg(target_os = "macos")]
 fn spawn_macos_hotkey(app: AppHandle) {
-    use rdev::{listen, EventType, Key};
+    use core_foundation::runloop::{kCFRunLoopCommonModes, CFRunLoop};
+    use core_graphics::event::{
+        CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
+        EventField,
+    };
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    // kVK_RightOption — the keycode reported by a FlagsChanged event for Right Option (⌥).
+    const KVK_RIGHT_OPTION: i64 = 61;
+    // NX_DEVICERALTKEYMASK — device-dependent flag bit set while Right Option is physically held.
+    const RIGHT_OPTION_FLAG: u64 = 0x0000_0040;
+
     thread::spawn(move || {
         let app2 = app.clone();
-        let mut down = false;
-        let result = listen(move |event| match event.event_type {
-            EventType::KeyPress(Key::AltGr) => {
-                if !down {
-                    down = true;
-                    handle_hotkey(&app2, true);
+        // Modifier keys don't auto-repeat, but guard against duplicate transitions anyway.
+        let down = AtomicBool::new(false);
+
+        let tap = CGEventTap::new(
+            CGEventTapLocation::HID,
+            CGEventTapPlacement::HeadInsertEventTap,
+            CGEventTapOptions::ListenOnly,
+            vec![CGEventType::FlagsChanged],
+            move |_proxy, _etype, event| {
+                let keycode = event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE);
+                if keycode == KVK_RIGHT_OPTION {
+                    let pressed = event.get_flags().bits() & RIGHT_OPTION_FLAG != 0;
+                    if down.swap(pressed, Ordering::Relaxed) != pressed {
+                        handle_hotkey(&app2, pressed);
+                    }
                 }
+                None
+            },
+        );
+
+        let tap = match tap {
+            Ok(t) => t,
+            Err(()) => {
+                eprintln!("macOS hotkey listener failed to create event tap (grant Accessibility permission)");
+                return;
             }
-            EventType::KeyRelease(Key::AltGr) => {
-                if down {
-                    down = false;
-                    handle_hotkey(&app2, false);
-                }
+        };
+
+        // Drive the tap on this thread's run loop.
+        let source = match tap.mach_port.create_runloop_source(0) {
+            Ok(s) => s,
+            Err(()) => {
+                eprintln!("macOS hotkey listener failed to create run-loop source");
+                return;
             }
-            _ => {}
-        });
-        if let Err(e) = result {
-            eprintln!("macOS hotkey listener failed: {:?} (grant Accessibility permission)", e);
+        };
+        let run_loop = CFRunLoop::get_current();
+        unsafe {
+            run_loop.add_source(&source, kCFRunLoopCommonModes);
         }
+        tap.enable();
+        CFRunLoop::run_current();
     });
 }
 
@@ -2009,9 +2815,14 @@ pub fn run() {
             // Evdev-based global hotkey — works on Wayland regardless of compositor
             #[cfg(target_os = "linux")]
             spawn_evdev_hotkey(app.handle().clone());
-            // macOS Right Option hold-to-talk (Wispr Flow default)
+            // macOS Right Option hold-to-talk (Wispr Flow default).
+            // Surface the Accessibility prompt first — the hotkey tap AND auto-paste both
+            // need it; without it the OS silently drops our synthetic events.
             #[cfg(target_os = "macos")]
-            spawn_macos_hotkey(app.handle().clone());
+            {
+                ensure_accessibility_permission();
+                spawn_macos_hotkey(app.handle().clone());
+            }
             // Pre-warm local Whisper model in background — slashes first-press latency
             preload_whisper_async(app.handle().clone());
             // Close → hide so background hotkey keeps working
@@ -2027,7 +2838,7 @@ pub fn run() {
             // System tray: icon + menu (Show / Toggle recording / Quit)
             let icon_bytes = include_bytes!("../icons/32x32.png");
             let icon = Image::from_bytes(icon_bytes).map_err(|e| e.to_string())?;
-            let show_item = MenuItemBuilder::with_id("tray_show", "Show MyVoice").build(app)?;
+            let show_item = MenuItemBuilder::with_id("tray_show", "Show Murmr").build(app)?;
             let toggle_item =
                 MenuItemBuilder::with_id("tray_toggle", "Start / Stop recording").build(app)?;
             let settings_item =
@@ -2040,8 +2851,10 @@ pub fn run() {
                 .build()?;
             let _tray = TrayIconBuilder::with_id("main")
                 .icon(icon)
-                .icon_as_template(true)
-                .tooltip("MyVoice — hold hotkey to dictate")
+                // Not a template: the logo has an opaque background, so template mode renders it as
+                // a solid monochrome box. Show the actual colored icon instead.
+                .icon_as_template(false)
+                .tooltip("Murmr — hold hotkey to dictate")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "tray_show" | "tray_settings" => {
@@ -2057,7 +2870,7 @@ pub fn run() {
                         if is_rec {
                             do_stop(app, &state);
                         } else {
-                            let _ = start_inner(&state);
+                            let _ = start_inner(app, &state);
                             show_hud(app, "recording");
                         }
                     }
@@ -2113,6 +2926,8 @@ pub fn run() {
             delete_history_item,
             flag_history_item,
             clear_history,
+            correct_transcript,
+            list_input_devices,
             get_stats,
         ])
         .run(tauri::generate_context!())

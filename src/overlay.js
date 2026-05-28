@@ -37,7 +37,23 @@ listen("rec-state", (e) => {
   const s = e.payload;
   if (s === "recording" || s === "transcribing" || s === "done" || s === "idle") {
     setState(s);
-    if (s === "recording") stateLabel.textContent = "Listening";
-    else if (s === "transcribing") stateLabel.textContent = "Transcribing";
+    if (s === "recording") {
+      stateLabel.textContent = "Listening";
+      stateLabel.classList.remove("live");
+    } else if (s === "transcribing") {
+      stateLabel.textContent = "Transcribing";
+      stateLabel.classList.remove("live");
+    }
   }
+});
+
+// Live partial transcript (streaming preview) — show the most recent words while recording.
+listen("partial-transcript", (e) => {
+  if (hud.dataset.state !== "recording") return;
+  const text = (e.payload || "").trim();
+  if (!text) return;
+  // Show the tail so the newest words stay visible within the fixed-width pill.
+  const tail = text.length > 64 ? "…" + text.slice(-64) : text;
+  stateLabel.textContent = tail;
+  stateLabel.classList.add("live");
 });

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "myvoice",
+  "productName": "Murmr",
   "version": "0.6.1",
-  "identifier": "com.myvoice.app",
+  "identifier": "app.murmr.dictation",
   "build": {
     "frontendDist": "../src"
   },
@@ -13,7 +13,7 @@
       {
         "label": "main",
         "url": "index.html",
-        "title": "MyVoice",
+        "title": "Murmr",
         "width": 960,
         "height": 640,
         "minWidth": 480,

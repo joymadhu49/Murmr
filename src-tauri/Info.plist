@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>MyVoice needs the microphone to transcribe your speech to text.</string>
+  <string>Murmr needs the microphone to transcribe your speech to text.</string>
   <key>NSAppleEventsUsageDescription</key>
-  <string>MyVoice uses synthetic key events to paste the transcript into the focused application.</string>
+  <string>Murmr uses synthetic key events to paste the transcript into the focused application.</string>
   <key>LSUIElement</key>
   <false/>
 </dict>

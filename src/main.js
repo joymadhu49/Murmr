@@ -52,6 +52,7 @@ let modelsEl, langEl, autoPasteEl, settingsStatusEl;
 let orKeyEl, orStatusEl, orTestBtn, orChatModelEl;
 let activeModeEl, customVocabEl, customModesListEl, addCustomModeBtn, promptPreviewEl;
 let smartFormatEl, autostartEl;
+let providerSegEl, providerDescEl, cloudModelFieldEl, cloudSttModelEl;
 let builtinModesCache = null;
 let downloading = new Map();
 
@@ -604,6 +605,38 @@ async function refreshModels() {
   modelsEl.querySelectorAll("button[data-act]").forEach((b) => b.addEventListener("click", onModelAction));
 }
 
+// Update the Local/Cloud segmented control + cloud-model field visibility.
+function reflectProvider(provider, hasKey) {
+  if (!providerSegEl) return;
+  providerSegEl.querySelectorAll(".seg-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.provider === provider);
+  });
+  if (cloudModelFieldEl) cloudModelFieldEl.hidden = provider !== "cloud";
+  if (providerDescEl) {
+    if (provider === "cloud") {
+      providerDescEl.textContent = hasKey
+        ? "Audio sent to OpenRouter for transcription. Most accurate; needs internet."
+        : "⚠ Add your OpenRouter key below — cloud falls back to local without it.";
+    } else {
+      providerDescEl.textContent = "Runs on-device via Whisper. Private, offline, free.";
+    }
+  }
+}
+
+async function setProvider(provider) {
+  const s = await invoke("get_settings");
+  s.transcription_provider = provider;
+  if (cloudSttModelEl && cloudSttModelEl.value.trim()) {
+    s.cloud_stt_model = cloudSttModelEl.value.trim();
+  }
+  await invoke("update_settings", { settings: s });
+  reflectProvider(provider, (s.api_key || "").trim().length > 0);
+  if (settingsStatusEl) {
+    settingsStatusEl.textContent =
+      provider === "cloud" ? "Cloud transcription (OpenRouter)." : "Local transcription (Whisper).";
+  }
+}
+
 async function refreshSettings() {
   const s = await invoke("get_settings");
   langEl.value = s.language || "auto";
@@ -613,6 +646,8 @@ async function refreshSettings() {
 
   if (customVocabEl) customVocabEl.value = s.custom_vocab || "";
   if (smartFormatEl) smartFormatEl.checked = !!s.smart_format;
+  if (cloudSttModelEl) cloudSttModelEl.value = s.cloud_stt_model || "google/gemini-2.5-flash";
+  reflectProvider(s.transcription_provider || "local", (s.api_key || "").trim().length > 0);
   if (autostartEl) {
     try {
       const actual = await invoke("get_autostart");
@@ -740,6 +775,7 @@ async function saveBehavior() {
   if (customVocabEl) s.custom_vocab = customVocabEl.value;
   if (activeModeEl) s.active_mode = activeModeEl.value || "notes";
   if (smartFormatEl) s.smart_format = smartFormatEl.checked;
+  if (cloudSttModelEl) s.cloud_stt_model = cloudSttModelEl.value.trim() || "google/gemini-2.5-flash";
   if (customModesListEl) {
     const rows = customModesListEl.querySelectorAll(".custom-mode-row");
     s.custom_modes = [...rows].map((row) => ({
@@ -833,6 +869,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   promptPreviewEl = document.querySelector("#prompt-preview");
   smartFormatEl = document.querySelector("#smart-format");
   autostartEl = document.querySelector("#autostart");
+  providerSegEl = document.querySelector("#provider-seg");
+  providerDescEl = document.querySelector("#provider-desc");
+  cloudModelFieldEl = document.querySelector("#cloud-model-field");
+  cloudSttModelEl = document.querySelector("#cloud-stt-model");
+  if (providerSegEl) {
+    providerSegEl.querySelectorAll(".seg-btn").forEach((b) => {
+      b.addEventListener("click", () => setProvider(b.dataset.provider));
+    });
+  }
+  if (cloudSttModelEl) cloudSttModelEl.addEventListener("change", saveBehavior);
   const customHotkeyEl = document.querySelector("#custom-hotkey");
   const customHotkeyCapture = document.querySelector("#custom-hotkey-capture");
   const customHotkeyClear = document.querySelector("#custom-hotkey-clear");
@@ -844,8 +890,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       s.custom_hotkey = customHotkeyEl.value.trim();
       await invoke("update_settings", { settings: s });
       if (customHotkeyStatus) customHotkeyStatus.textContent = s.custom_hotkey
-        ? `Saved: ${s.custom_hotkey} — restart MyVoice for the new hotkey to take effect.`
-        : "Custom hotkey cleared — restart MyVoice.";
+        ? `Saved: ${s.custom_hotkey} — restart Murmr for the new hotkey to take effect.`
+        : "Custom hotkey cleared — restart Murmr.";
     };
     customHotkeyEl.addEventListener("change", save);
     customHotkeyEl.addEventListener("blur", save);

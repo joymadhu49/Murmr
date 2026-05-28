@@ -23,5 +23,5 @@ fn main() {
         }
     }
 
-    myvoice_lib::run()
+    murmr_lib::run()
 }
