@@ -9,17 +9,28 @@
   <body>
     <div id="hud" class="hud" data-state="idle">
       <button class="pill idle-pill" id="idle-pill" title="Click to start recording">
-        <span class="dot"></span>
+        <span class="mic-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="2" width="6" height="12" rx="3"/>
+            <path d="M5 11a7 7 0 0 0 14 0"/>
+            <line x1="12" y1="18" x2="12" y2="22"/>
+          </svg>
+        </span>
         <span class="label">Click to dictate</span>
-        <span class="kbd">F9</span>
+        <span class="kbd" id="idle-kbd">F9</span>
       </button>
 
       <div class="pill rec-pill">
+        <span class="rec-dot" aria-hidden="true"></span>
         <div class="bars" aria-hidden="true">
           <span></span><span></span><span></span><span></span>
           <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
         </div>
-        <span class="state-label" id="state-label">Listening</span>
+        <div class="rec-meta">
+          <span class="state-label" id="state-label">Listening</span>
+          <span class="timer" id="timer">0:00</span>
+        </div>
         <button class="hud-btn stop-btn" id="stop-btn" title="Stop &amp; transcribe" aria-label="Stop">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
         </button>

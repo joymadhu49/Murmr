@@ -28,8 +28,8 @@
       {
         "label": "hud",
         "url": "overlay.html",
-        "width": 360,
-        "height": 80,
+        "width": 420,
+        "height": 96,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

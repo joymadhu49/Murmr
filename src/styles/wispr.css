@@ -972,7 +972,8 @@ body.with-sidebar.sidebar-collapsed .main {
 .cleanup-card:hover { border-color: var(--border-strong); }
 .cleanup-card.active {
   border-color: #6B4FD9;
-  border-width: 1.5px;
+  background: linear-gradient(180deg, #fafaff 0%, #f4f1ff 100%);
+  box-shadow: 0 0 0 2px #6B4FD9 inset, 0 4px 16px rgba(107, 79, 217, 0.18);
 }
 
 .cleanup-card-name {
@@ -1042,9 +1043,11 @@ body.with-sidebar.sidebar-collapsed .main {
 }
 .style-card:hover { border-color: var(--border-strong); }
 .style-card.active {
-  border-color: #B7A8FF;
-  box-shadow: 0 0 0 1px #B7A8FF inset;
+  border-color: #6B4FD9;
+  box-shadow: 0 0 0 2px #6B4FD9 inset, 0 4px 16px rgba(107, 79, 217, 0.18);
+  background: linear-gradient(180deg, #fafaff 0%, #f4f1ff 100%);
 }
+.style-card.active .style-card-title { color: #4a36a8; }
 .style-card-title {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 22px;

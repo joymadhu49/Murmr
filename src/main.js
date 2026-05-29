@@ -454,9 +454,15 @@ function buildStyleForms() {
 
 async function onStyleCardClick(profileKey, variantId) {
   const profile = { style: variantId };
-  await invoke("set_style_profile", { key: profileKey, profile });
-  await invoke("set_active_style_profile", { key: profileKey });
+  // Optimistic UI: highlight the clicked card immediately so the user gets feedback even if the
+  // backend invoke is slow or errors.
   applyStyleSelections({ [profileKey]: profile }, profileKey, /*partial=*/true);
+  try {
+    await invoke("set_style_profile", { key: profileKey, profile });
+    await invoke("set_active_style_profile", { key: profileKey });
+  } catch (e) {
+    console.error("set_style_profile failed:", e);
+  }
 }
 
 function applyStyleSelections(profiles, activeKey, partial) {
@@ -615,10 +621,10 @@ function reflectProvider(provider, hasKey) {
   if (providerDescEl) {
     if (provider === "cloud") {
       providerDescEl.textContent = hasKey
-        ? "Audio sent to OpenRouter for transcription. Most accurate; needs internet."
+        ? "Audio sent to OpenRouter Whisper (whisper-large-v3-turbo by default). ~6% WER, near-zero hallucination, no LLM polish. Needs internet."
         : "⚠ Add your OpenRouter key below — cloud falls back to local without it.";
     } else {
-      providerDescEl.textContent = "Runs on-device via Whisper. Private, offline, free.";
+      providerDescEl.textContent = "Runs on-device via Whisper. Private, offline, free. Pick a larger model below for best accuracy.";
     }
   }
 }
@@ -646,7 +652,7 @@ async function refreshSettings() {
 
   if (customVocabEl) customVocabEl.value = s.custom_vocab || "";
   if (smartFormatEl) smartFormatEl.checked = !!s.smart_format;
-  if (cloudSttModelEl) cloudSttModelEl.value = s.cloud_stt_model || "google/gemini-2.5-flash";
+  if (cloudSttModelEl) cloudSttModelEl.value = s.cloud_stt_model || "openai/whisper-large-v3-turbo";
   reflectProvider(s.transcription_provider || "local", (s.api_key || "").trim().length > 0);
   if (autostartEl) {
     try {
@@ -898,24 +904,52 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (customHotkeyCapture) {
       customHotkeyCapture.addEventListener("click", () => {
         customHotkeyEl.focus();
-        if (customHotkeyStatus) customHotkeyStatus.textContent = "Press the combo now…";
+        if (customHotkeyStatus) customHotkeyStatus.textContent = "Hold modifiers (Ctrl/Shift/Alt/Cmd) then press a key — or just release modifiers to capture a modifier-only combo (macOS hold-to-talk).";
+        const isMac = navigator.platform.toLowerCase().includes("mac");
+        const modParts = (ctrl, shift, alt, meta) => {
+          const p = [];
+          if (ctrl) p.push("Ctrl");
+          if (shift) p.push("Shift");
+          if (alt) p.push(isMac ? "Option" : "Alt");
+          if (meta) p.push(isMac ? "Cmd" : "Super");
+          return p;
+        };
+        let modSnapshot = { ctrl: false, shift: false, alt: false, meta: false };
+        let sawMod = false;
+        const finish = (value) => {
+          customHotkeyEl.value = value;
+          document.removeEventListener("keydown", onKey, true);
+          document.removeEventListener("keyup", onKeyUp, true);
+          save();
+        };
         const onKey = (e) => {
-          if (!e.code || e.code.startsWith("Meta") || e.code.startsWith("Shift") || e.code.startsWith("Control") || e.code.startsWith("Alt")) return;
+          const isModKey = !e.code || e.code.startsWith("Meta") || e.code.startsWith("Shift")
+            || e.code.startsWith("Control") || e.code.startsWith("Alt");
+          if (isModKey) {
+            modSnapshot = { ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey };
+            sawMod = sawMod || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey;
+            return;
+          }
           e.preventDefault();
-          const parts = [];
-          if (e.ctrlKey) parts.push("Ctrl");
-          if (e.shiftKey) parts.push("Shift");
-          if (e.altKey) parts.push(navigator.platform.toLowerCase().includes("mac") ? "Option" : "Alt");
-          if (e.metaKey) parts.push(navigator.platform.toLowerCase().includes("mac") ? "Cmd" : "Super");
+          const parts = modParts(e.ctrlKey, e.shiftKey, e.altKey, e.metaKey);
           let k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
           const map = { " ": "Space", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right" };
           if (map[k]) k = map[k];
           parts.push(k);
-          customHotkeyEl.value = parts.join("+");
-          document.removeEventListener("keydown", onKey, true);
-          save();
+          finish(parts.join("+"));
+        };
+        const onKeyUp = (e) => {
+          // Modifier released — if no normal key was ever pressed, capture as modifier-only combo.
+          const isModKey = !e.code || e.code.startsWith("Meta") || e.code.startsWith("Shift")
+            || e.code.startsWith("Control") || e.code.startsWith("Alt");
+          if (!isModKey) return;
+          if (!sawMod) return;
+          const parts = modParts(modSnapshot.ctrl, modSnapshot.shift, modSnapshot.alt, modSnapshot.meta);
+          if (parts.length === 0) return;
+          finish(parts.join("+"));
         };
         document.addEventListener("keydown", onKey, true);
+        document.addEventListener("keyup", onKeyUp, true);
       });
     }
     if (customHotkeyClear) {

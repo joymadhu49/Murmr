@@ -155,16 +155,16 @@
               <span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">Space</span>
               <span class="muted small">or</span>
               <span class="kbd">F9</span>
-              <span class="muted small" id="mac-hotkey-inline" style="display:none;">· macOS: hold ⌥ Right Option</span>
+              <span class="muted small" id="mac-hotkey-inline" style="display:none;">· macOS: hold ⌥ Right Option (or set a modifier-only combo below)</span>
             </div>
             <div class="field" style="margin-top:10px;">
               <label>Add a custom hotkey</label>
               <div class="row">
-                <input id="custom-hotkey" type="text" placeholder="Cmd+Shift+P (mac) · Ctrl+Alt+M (linux/win)" style="flex:1;min-width:240px;" />
+                <input id="custom-hotkey" type="text" placeholder="Ctrl+Shift  ·  Cmd+Shift+P  ·  F9" style="flex:1;min-width:240px;" />
                 <button id="custom-hotkey-capture" class="btn" type="button">Record keys</button>
                 <button id="custom-hotkey-clear" class="btn" type="button">Clear</button>
               </div>
-              <div class="muted small" id="custom-hotkey-status" style="margin-top:4px;">Tip: press the combo while focused on the box, or type it directly. Modifiers: Ctrl / Shift / Alt / Cmd. Restart Murmr after changing.</div>
+              <div class="muted small" id="custom-hotkey-status" style="margin-top:4px;">Type a combo or click <strong>Record keys</strong>. On macOS, modifier-only combos (e.g. <em>Ctrl+Shift</em>) work as hold-to-talk — 180&nbsp;ms hold required; pressing any other key while held cancels. Restart Murmr after changing.</div>
             </div>
           </div>
 
@@ -174,14 +174,14 @@
             <div class="field">
               <div class="seg" id="provider-seg">
                 <button type="button" class="seg-btn" data-provider="local">Local · offline &amp; private</button>
-                <button type="button" class="seg-btn" data-provider="cloud">Cloud · OpenRouter</button>
+                <button type="button" class="seg-btn" data-provider="cloud">Cloud · OpenRouter Whisper</button>
               </div>
               <div class="muted small" id="provider-desc"></div>
             </div>
             <div class="field" id="cloud-model-field" hidden>
-              <label>Cloud model (audio-capable)</label>
-              <input id="cloud-stt-model" type="text" placeholder="google/gemini-2.5-flash" />
-              <div class="muted small">Uses the same OpenRouter key below. Cloud skips AI polish — it's already clean.</div>
+              <label>Cloud Whisper model</label>
+              <input id="cloud-stt-model" type="text" placeholder="openai/whisper-large-v3-turbo" />
+              <div class="muted small">Default: <code>openai/whisper-large-v3-turbo</code> — fastest accurate option (~6% WER, &lt;1 s typical). Alternatives: <code>openai/whisper-large-v3</code> (slightly more accurate), <code>openai/whisper-1</code>. Uses the same OpenRouter key below. No LLM polish applied — Whisper output goes straight to the cursor.</div>
             </div>
           </div>
 

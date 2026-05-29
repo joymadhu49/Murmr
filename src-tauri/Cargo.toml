@@ -34,6 +34,7 @@ evdev = "0.12"
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.23"
 core-foundation = "0.9"
+libc = "0.2"
 # Enable Metal GPU acceleration for Whisper on Apple Silicon (huge decode speedup).
 # Target-specific feature merge: Linux/Windows keep the plain CPU build above.
 whisper-rs = { version = "0.16", features = ["metal"] }
