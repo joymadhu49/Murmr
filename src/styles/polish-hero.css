@@ -243,14 +243,12 @@ textarea:focus-visible {
   gap: 12px;
 }
 
-/* "Start recording" pill — refined padding, weight, and hover lift */
+/* "Start recording" pill — hover lift; sizing is owned by compact.css (8px 18px) */
 .hero-card .pill-btn {
-  padding: 11px 22px;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.1px;
-  min-width: 172px;
   background: #ffffff;
   color: #1a1330;
   box-shadow:

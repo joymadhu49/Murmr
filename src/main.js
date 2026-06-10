@@ -38,10 +38,9 @@ document.addEventListener("mousedown", async (e) => {
 });
 
 let recording = false;
-let btn, status, providerInfo;
-let statWords, statWpm, statStreak;
+let btn, status;
 let statWords2, statWpm2, statStreak2, statSessions;
-let profileWords, profileBar, profileStatus, profileInfo;
+let profileWords;
 let historyContainer, historySearchEl, historyCountEl;
 let historyItems = [];
 let historyQuery = "";
@@ -51,14 +50,15 @@ let activeTab = "home";
 let modelsEl, langEl, autoPasteEl, settingsStatusEl;
 let orKeyEl, orStatusEl, orTestBtn, orChatModelEl;
 let activeModeEl, customVocabEl, customModesListEl, addCustomModeBtn, promptPreviewEl;
-let smartFormatEl, autostartEl;
-let providerSegEl, providerDescEl, cloudModelFieldEl, cloudSttModelEl;
+let smartFormatEl, autostartEl, playSoundsEl, spokenPunctuationEl;
+let providerSegEl, cloudSttModelEl;
+let livePreviewEl, voiceCommandsEl, inputDeviceEl;
 let builtinModesCache = null;
 let downloading = new Map();
 
 function setRecording(on) {
   recording = on;
-  if (btn) btn.textContent = on ? "Stop & transcribe" : "Start recording";
+  if (btn) btn.textContent = on ? "Stop and transcribe" : "Start recording";
   const cancel = document.getElementById("cancel-rec");
   if (cancel) cancel.hidden = !on;
 }
@@ -92,9 +92,33 @@ function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+// ============ Toasts ============
+
+function showToast(message, kind = "info") {
+  const host = document.getElementById("toast-host");
+  if (!host) return;
+  // Dedup: if the newest visible toast says the same thing, don't stack another.
+  const newest = host.lastElementChild;
+  if (newest && !newest.classList.contains("toast-out") && newest.textContent === message) return;
+  // Queue: keep at most 3 — drop the oldest.
+  while (host.children.length >= 3) host.firstElementChild.remove();
+  const el = document.createElement("div");
+  el.className = `toast toast-${kind}`;
+  el.setAttribute("role", kind === "error" ? "alert" : "status");
+  el.textContent = message;
+  const dismiss = () => {
+    if (!el.isConnected) return;
+    el.classList.add("toast-out");
+    setTimeout(() => el.remove(), 180);
+  };
+  el.addEventListener("click", dismiss);
+  host.appendChild(el);
+  setTimeout(dismiss, 4000);
+}
+
 function renderPromptChips(prompt) {
   if (!prompt || !prompt.length) {
-    return `<div class="prompt-empty">(empty — dictate a few times or add custom vocabulary)</div>`;
+    return `<div class="prompt-empty">Nothing learned yet. Dictate a few times and Murmr will pick up your vocabulary.</div>`;
   }
   const groups = [];
   const re = /([A-Z][A-Za-z ]{2,30}?):\s*([^.]+?)(?=\.\s+[A-Z][A-Za-z ]{2,30}?:|\.?\s*$)/g;
@@ -121,13 +145,13 @@ function rowHtml(e) {
       <div class="time">${fmtTime(e.ts)}</div>
       <div class="text">${escapeHtml(e.text)}</div>
       <div class="actions">
-        <button class="icon-btn" data-act="copy" title="Copy">
+        <button class="icon-btn" data-act="copy" title="Copy" aria-label="Copy dictation">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
         </button>
-        <button class="icon-btn" data-act="flag" title="Flag">
+        <button class="icon-btn" data-act="flag" title="Flag" aria-label="Flag dictation">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 21V4h12l-2 4 2 4H5"/></svg>
         </button>
-        <button class="icon-btn danger" data-act="delete" title="Delete">
+        <button class="icon-btn danger" data-act="delete" title="Delete" aria-label="Delete dictation">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6"/></svg>
         </button>
       </div>
@@ -176,16 +200,25 @@ async function onRowAction(e) {
     const text = row.querySelector(".text").textContent;
     try {
       await navigator.clipboard.writeText(text);
-      status.textContent = "Copied.";
+      showToast("Copied to clipboard.", "success");
     } catch {
-      status.textContent = "Copy failed.";
+      showToast("Couldn't copy to clipboard.", "error");
     }
   } else if (act === "flag") {
-    await invoke("flag_history_item", { id });
-    await refreshAll();
+    try {
+      await invoke("flag_history_item", { id });
+      await refreshAll();
+    } catch (e) {
+      showToast("Couldn't flag item: " + e, "error");
+    }
   } else if (act === "delete") {
-    await invoke("delete_history_item", { id });
-    await refreshAll();
+    if (!confirm("Delete this dictation?")) return;
+    try {
+      await invoke("delete_history_item", { id });
+      await refreshAll();
+    } catch (e) {
+      showToast("Couldn't delete item: " + e, "error");
+    }
   }
 }
 
@@ -196,9 +229,6 @@ async function refreshHistory() {
 
 async function refreshStats() {
   const s = await invoke("get_stats");
-  if (statWords) statWords.textContent = fmtNumber(s.total_words);
-  if (statWpm) statWpm.textContent = s.wpm;
-  if (statStreak) statStreak.textContent = s.streak;
   if (statWords2) statWords2.textContent = s.total_words.toLocaleString();
   if (statWpm2) statWpm2.textContent = s.wpm;
   if (statStreak2) statStreak2.textContent = s.streak;
@@ -210,29 +240,18 @@ async function refreshStats() {
   if (hdrStreak) hdrStreak.textContent = s.streak;
   if (hdrWords) hdrWords.textContent = fmtNumber(s.total_words);
   if (hdrWpm) hdrWpm.textContent = s.wpm;
-  const profSize = s.voice_profile_size || 0;
-  const pct = Math.min(100, Math.round((profSize / 1024) * 100));
-  profileBar.style.width = pct + "%";
-  profileStatus.textContent = profSize > 0
-    ? `Tracking ${profSize} chars of personalized vocabulary`
-    : "Keep dictating to build your profile";
-  profileInfo.textContent = profSize > 0
-    ? "Sent to Whisper as a context prompt to bias recognition."
-    : "First few dictations build the profile.";
 }
 
 async function refreshSettingsCard() {
   try {
     const s = await invoke("get_settings");
-    const prov = `Local · ${s.active_model}`;
-    if (providerInfo) providerInfo.textContent = `${prov} · lang=${s.language || "auto"}`;
     if (activeModeEl && !activeModeEl.options.length) {
       await populateModeDropdown(s);
     } else if (activeModeEl) {
       activeModeEl.value = s.active_mode || "notes";
     }
   } catch {
-    providerInfo.textContent = "—";
+    // ignore
   }
 }
 
@@ -309,7 +328,7 @@ async function refreshProfile() {
     } else if (custom && custom.terms.trim()) {
       packEl.textContent = custom.terms;
     } else {
-      packEl.textContent = "(this mode has no curated pack — relies on custom vocab + auto)";
+      packEl.textContent = "No curated pack for this mode. It uses your vocabulary and auto-learned terms.";
     }
   }
 
@@ -351,7 +370,7 @@ async function refreshProfile() {
   if (profileWords) {
     profileWords.innerHTML = top.length
       ? top.map(([w, c]) => `<span class="vocab-chip">${escapeHtml(casing.get(w) || w)} <span class="muted">${c}</span></span>`).join(" ")
-      : "(empty — dictate a few times)";
+      : "Nothing learned yet. Dictate a few times and Murmr will pick up your vocabulary.";
   }
 }
 
@@ -359,9 +378,9 @@ let activeStyleSub = "cleanup";
 let styleFormsBuilt = false;
 
 const STYLE_VARIANTS = [
-  { id: "formal", title: "Formal.", sub: "Caps + Punctuation" },
-  { id: "casual", title: "Casual", sub: "Caps + Less punctuation" },
-  { id: "excited", title: "Excited!", sub: "More exclamations" },
+  { id: "formal", title: "Formal", sub: "Caps and punctuation" },
+  { id: "casual", title: "Casual", sub: "Caps and less punctuation" },
+  { id: "excited", title: "Excited", sub: "More exclamations" },
 ];
 
 // Per-profile preview content per variant.
@@ -409,29 +428,9 @@ const STYLE_PREVIEW_CONTENT = {
 
 function renderPreviewBlock(profileKey, variantId) {
   const pc = STYLE_PREVIEW_CONTENT[profileKey];
-  const body = pc.body[variantId] || "";
-  if (pc.kind === "chat") {
-    const lines = escapeHtml(body).split("\n").join("<br>");
-    return `
-      <div class="style-card-chat">
-        <div class="chat-avatar v-${variantId}">${escapeHtml(pc.initial)}</div>
-        <div class="chat-meta">${escapeHtml(pc.name)} <span class="chat-time">${escapeHtml(pc.time)}</span></div>
-        <div class="chat-body">${lines}</div>
-      </div>
-    `;
-  }
-  if (pc.kind === "email") {
-    const para = escapeHtml(body).split(/\n\n+/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
-    return `
-      <div class="style-card-email">
-        <div class="email-to">To: ${escapeHtml(pc.to)}</div>
-        <div class="email-body">${para}</div>
-      </div>
-    `;
-  }
-  // paragraph
-  const para = escapeHtml(body).split(/\n\n+/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
-  return `<div class="style-card-para">${para}</div>`;
+  // Compact card: one short preview line instead of a fake chat/email mock.
+  const text = (pc.body[variantId] || "").replace(/\s*\n+\s*/g, " ").trim();
+  return `<span class="style-card-line">“${escapeHtml(text)}”</span>`;
 }
 
 function buildStyleForms() {
@@ -512,13 +511,16 @@ async function refreshAll() {
 
 async function toggle() {
   if (!recording) {
+    btn.disabled = true;
     try {
       await invoke("start_recording");
       setRecording(true);
       status.textContent = "Recording… click Stop or press F9.";
     } catch (e) {
-      status.textContent = "Error: " + e;
+      status.textContent = "";
+      showToast("Couldn't start recording: " + e, "error");
     }
+    btn.disabled = false;
   } else {
     btn.disabled = true;
     status.textContent = "Transcribing…";
@@ -526,7 +528,8 @@ async function toggle() {
       const text = await invoke("stop_recording");
       status.textContent = `Done. "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`;
     } catch (e) {
-      status.textContent = "Error: " + e;
+      status.textContent = "";
+      showToast("Couldn't transcribe: " + e, "error");
     }
     btn.disabled = false;
     setRecording(false);
@@ -537,14 +540,16 @@ async function cancel() {
   try {
     await invoke("cancel_recording");
     setRecording(false);
-    status.textContent = "Cancelled.";
+    status.textContent = "Canceled.";
   } catch (e) {
-    status.textContent = "Error: " + e;
+    status.textContent = "";
+    showToast("Couldn't cancel: " + e, "error");
   }
 }
 
 function setTab(t) {
   activeTab = t;
+  try { localStorage.setItem("activeTab", t); } catch { /* ignore */ }
   document.querySelectorAll(".nav-btn[data-tab]").forEach((b) => {
     b.classList.toggle("active", b.dataset.tab === t);
   });
@@ -563,14 +568,349 @@ function setTab(t) {
   setVis("profile-tab", t === "profile");
   setVis("settings-tab", t === "settings");
   setVis("style-tab", t === "style");
+  setVis("dictionary-tab", t === "dictionary");
+  setVis("snippets-tab", t === "snippets");
   document.querySelector(".main").classList.toggle("full", t !== "home");
-  setVis("right-col", t === "home");
   if (t === "profile") refreshProfile();
   if (t === "settings") refreshSettings();
+  if (t === "dictionary") refreshDictionary();
+  if (t === "snippets") refreshSnippets();
   if (t === "style") {
     setStyleSubTab(activeStyleSub); // sync — no flash before async invoke resolves
     refreshStyleTab();
   }
+}
+
+// ============ Dictionary tab ============
+
+function vocabLinesFrom(s) {
+  return (s.custom_vocab || "").split("\n").map((l) => l.trim()).filter(Boolean);
+}
+
+async function refreshDictionary() {
+  const s = await invoke("get_settings");
+  renderVocabChips(vocabLinesFrom(s));
+  renderReplacements(s.replacements ?? []);
+}
+
+function renderVocabChips(lines) {
+  const host = document.getElementById("dict-vocab-chips");
+  if (!host) return;
+  if (!lines.length) {
+    host.innerHTML = `<div class="hub-empty">No terms yet. Add names, jargon, and acronyms so Murmr spells them right.</div>`;
+    return;
+  }
+  host.innerHTML = lines
+    .map((t, i) => `
+      <span class="vocab-chip hub-vocab-chip">${escapeHtml(t)}
+        <button class="chip-x" data-idx="${i}" type="button" aria-label="Remove ${escapeHtml(t)}">×</button>
+      </span>`)
+    .join("");
+  host.querySelectorAll(".chip-x").forEach((b) => {
+    b.addEventListener("click", () => removeVocabTerm(Number(b.dataset.idx)));
+  });
+}
+
+async function addVocabTerm() {
+  const input = document.getElementById("dict-vocab-input");
+  if (!input) return;
+  const term = input.value.trim();
+  if (!term) return;
+  try {
+    const s = await invoke("get_settings");
+    const lines = vocabLinesFrom(s);
+    if (lines.some((l) => l.toLowerCase() === term.toLowerCase())) {
+      showToast(`"${term}" is already in your vocabulary.`, "info");
+      input.value = "";
+      return;
+    }
+    lines.push(term);
+    s.custom_vocab = lines.join("\n");
+    s.replacements = s.replacements ?? [];
+    await invoke("update_settings", { settings: s });
+    input.value = "";
+    renderVocabChips(lines);
+    if (customVocabEl) customVocabEl.value = s.custom_vocab;
+  } catch (e) {
+    showToast("Couldn't add term: " + e, "error");
+  }
+}
+
+async function removeVocabTerm(idx) {
+  try {
+    const s = await invoke("get_settings");
+    const lines = vocabLinesFrom(s);
+    lines.splice(idx, 1);
+    s.custom_vocab = lines.join("\n");
+    s.replacements = s.replacements ?? [];
+    await invoke("update_settings", { settings: s });
+    renderVocabChips(lines);
+    if (customVocabEl) customVocabEl.value = s.custom_vocab;
+  } catch (e) {
+    showToast("Couldn't remove term: " + e, "error");
+  }
+}
+
+function renderReplacements(reps) {
+  const host = document.getElementById("dict-replacements");
+  if (!host) return;
+  if (!reps.length) {
+    host.innerHTML = `<div class="hub-empty">No replacements yet. Fix Murmr's recurring mishears — e.g. "jay" → "Jae".</div>`;
+    return;
+  }
+  host.innerHTML = `
+    <div class="hub-repl-head"><span>Heard</span><span></span><span>Replace with</span><span></span></div>
+    ${reps.map((r, i) => `
+      <div class="hub-repl-row" data-idx="${i}">
+        <input class="repl-from" value="${escapeHtml(r.from || "")}" placeholder="What Murmr heard" />
+        <span class="repl-arrow">→</span>
+        <input class="repl-to" value="${escapeHtml(r.to || "")}" placeholder="What it should write" />
+        <button class="icon-btn danger repl-delete" type="button" aria-label="Delete replacement">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6"/></svg>
+        </button>
+      </div>`).join("")}
+  `;
+  host.querySelectorAll(".repl-from, .repl-to").forEach((el) => {
+    el.addEventListener("change", saveReplacements);
+    el.addEventListener("blur", saveReplacements);
+  });
+  host.querySelectorAll(".repl-delete").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const idx = Number(b.closest(".hub-repl-row").dataset.idx);
+      try {
+        const s = await invoke("get_settings");
+        const list = s.replacements ?? [];
+        list.splice(idx, 1);
+        s.replacements = list;
+        await invoke("update_settings", { settings: s });
+        renderReplacements(list);
+      } catch (e) {
+        showToast("Couldn't delete replacement: " + e, "error");
+      }
+    });
+  });
+}
+
+async function saveReplacements() {
+  const host = document.getElementById("dict-replacements");
+  if (!host) return;
+  const rows = [...host.querySelectorAll(".hub-repl-row")];
+  const reps = rows
+    .map((row) => ({
+      from: row.querySelector(".repl-from")?.value.trim() || "",
+      to: row.querySelector(".repl-to")?.value.trim() || "",
+    }))
+    .filter((r) => r.from && r.to); // only persist complete rows — half-filled ones stay editable in the DOM
+  try {
+    const s = await invoke("get_settings");
+    s.replacements = reps;
+    await invoke("update_settings", { settings: s });
+  } catch (e) {
+    showToast("Couldn't save replacements: " + e, "error");
+  }
+}
+
+async function addReplacementRow() {
+  try {
+    const s = await invoke("get_settings");
+    const list = s.replacements ?? [];
+    list.push({ from: "", to: "" });
+    s.replacements = list;
+    await invoke("update_settings", { settings: s });
+    renderReplacements(list);
+    const host = document.getElementById("dict-replacements");
+    const last = host?.querySelector(".hub-repl-row:last-child .repl-from");
+    if (last) last.focus();
+  } catch (e) {
+    showToast("Couldn't add replacement: " + e, "error");
+  }
+}
+
+// ============ Snippets tab ============
+
+async function refreshSnippets() {
+  const s = await invoke("get_settings");
+  renderSnippets(s.snippets ?? []);
+}
+
+function renderSnippets(snips) {
+  const host = document.getElementById("snippets-list");
+  if (!host) return;
+  if (!snips.length) {
+    host.innerHTML = `<div class="hub-empty">No snippets yet. Say the trigger phrase while dictating and Murmr pastes the full snippet — great for emails, addresses, and sign-offs.</div>`;
+    return;
+  }
+  host.innerHTML = snips
+    .map((sn, i) => `
+      <div class="hub-snippet-card" data-idx="${i}">
+        <div class="hub-snippet-head">
+          <input class="snip-trigger" value="${escapeHtml(sn.trigger || "")}" placeholder="Trigger phrase — e.g. my work address" aria-label="Trigger phrase" />
+          <button class="icon-btn danger snip-delete" type="button" aria-label="Delete snippet">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6"/></svg>
+          </button>
+        </div>
+        <textarea class="snip-expansion" rows="3" placeholder="Expansion — the text Murmr should paste" aria-label="Snippet expansion">${escapeHtml(sn.expansion || "")}</textarea>
+      </div>`)
+    .join("");
+  host.querySelectorAll(".snip-trigger, .snip-expansion").forEach((el) => {
+    el.addEventListener("change", saveSnippets);
+    el.addEventListener("blur", saveSnippets);
+  });
+  host.querySelectorAll(".snip-delete").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const idx = Number(b.closest(".hub-snippet-card").dataset.idx);
+      try {
+        const s = await invoke("get_settings");
+        const list = s.snippets ?? [];
+        list.splice(idx, 1);
+        s.snippets = list;
+        await invoke("update_settings", { settings: s });
+        renderSnippets(list);
+      } catch (e) {
+        showToast("Couldn't delete snippet: " + e, "error");
+      }
+    });
+  });
+}
+
+async function saveSnippets() {
+  const host = document.getElementById("snippets-list");
+  if (!host) return;
+  const cards = [...host.querySelectorAll(".hub-snippet-card")];
+  const snips = cards
+    .map((card) => ({
+      trigger: card.querySelector(".snip-trigger")?.value.trim() || "",
+      expansion: card.querySelector(".snip-expansion")?.value || "",
+    }))
+    .filter((sn) => sn.trigger && sn.expansion.trim()); // only persist complete snippets — half-filled ones stay editable in the DOM
+  try {
+    const s = await invoke("get_settings");
+    s.snippets = snips;
+    await invoke("update_settings", { settings: s });
+  } catch (e) {
+    showToast("Couldn't save snippets: " + e, "error");
+  }
+}
+
+async function addSnippet() {
+  try {
+    const s = await invoke("get_settings");
+    const list = s.snippets ?? [];
+    list.push({ trigger: "", expansion: "" });
+    s.snippets = list;
+    await invoke("update_settings", { settings: s });
+    renderSnippets(list);
+    const host = document.getElementById("snippets-list");
+    const last = host?.querySelector(".hub-snippet-card:last-child .snip-trigger");
+    if (last) last.focus();
+  } catch (e) {
+    showToast("Couldn't add snippet: " + e, "error");
+  }
+}
+
+// ============ Onboarding ============
+
+let onboardingStep = 0;
+let onboardingAwaitingDictation = false;
+let onboardingCleanupLevel = "light";
+
+function hotkeyKbdHtml(combo) {
+  return combo
+    .split("+")
+    .map((k) => `<span class="kbd">${escapeHtml(k.trim())}</span>`)
+    .join("");
+}
+
+function showOnboardingStep(n) {
+  onboardingStep = n;
+  const overlay = document.getElementById("onboarding");
+  if (!overlay) return;
+  overlay.querySelectorAll(".onboarding-step").forEach((s) => {
+    s.hidden = Number(s.dataset.step) !== n;
+  });
+  overlay.querySelectorAll("#onboarding-dots .dot").forEach((d, i) => {
+    d.classList.toggle("active", i === n);
+  });
+  const back = document.getElementById("onboarding-back");
+  const next = document.getElementById("onboarding-next");
+  if (back) back.hidden = n === 0;
+  if (next) next.textContent = n === 2 ? "Finish" : "Next";
+  onboardingAwaitingDictation = n === 1;
+}
+
+async function finishOnboarding() {
+  try {
+    await invoke("set_cleanup_level", { level: onboardingCleanupLevel });
+  } catch (e) {
+    showToast("Couldn't save cleanup level: " + e, "error");
+  }
+  localStorage.setItem("murmr_onboarded", "1");
+  onboardingAwaitingDictation = false;
+  const overlay = document.getElementById("onboarding");
+  if (overlay) overlay.hidden = true;
+  showToast("You're all set. Hold the hotkey and speak.", "success");
+}
+
+function onboardingDictationSucceeded() {
+  if (!onboardingAwaitingDictation || onboardingStep !== 1) return;
+  onboardingAwaitingDictation = false;
+  const statusEl = document.getElementById("onboarding-try-status");
+  if (statusEl) {
+    statusEl.textContent = "That's it — your first dictation is in.";
+    statusEl.classList.add("success");
+  }
+  setTimeout(() => showOnboardingStep(2), 900);
+}
+
+async function initOnboarding() {
+  if (localStorage.getItem("murmr_onboarded")) return;
+  const overlay = document.getElementById("onboarding");
+  if (!overlay) return;
+
+  // Show the active hotkey (same source as the hero card: settings.custom_hotkey or the
+  // platform default — on macOS the backend default is hold Right Option).
+  try {
+    const s = await invoke("get_settings");
+    const platformDefault = navigator.userAgent.includes("Mac")
+      ? "Right ⌥ Option (hold)"
+      : "Ctrl+Shift+Space";
+    const combo = (s.custom_hotkey || "").trim() || platformDefault;
+    const hk = document.getElementById("onboarding-hotkey");
+    if (hk) hk.innerHTML = hotkeyKbdHtml(combo);
+  } catch {
+    // keep the default markup
+  }
+
+  const isMac = document.body.classList.contains("platform-mac");
+  const axRow = document.getElementById("onboarding-perm-ax");
+  if (axRow && !isMac) axRow.style.display = "none";
+
+  document.getElementById("onboarding-next")?.addEventListener("click", () => {
+    if (onboardingStep === 2) finishOnboarding();
+    else showOnboardingStep(onboardingStep + 1);
+  });
+  document.getElementById("onboarding-back")?.addEventListener("click", () => {
+    if (onboardingStep > 0) showOnboardingStep(onboardingStep - 1);
+  });
+  document.getElementById("onboarding-skip-try")?.addEventListener("click", () => {
+    showOnboardingStep(2);
+  });
+  overlay.querySelectorAll(".ob-cleanup-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      onboardingCleanupLevel = card.dataset.level;
+      overlay.querySelectorAll(".ob-cleanup-card").forEach((c) => {
+        c.classList.toggle("active", c === card);
+      });
+    });
+  });
+
+  // Escape skips the rest of onboarding.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !overlay.hidden) finishOnboarding();
+  });
+
+  overlay.hidden = false;
+  showOnboardingStep(0);
 }
 
 // ============ Settings tab logic (was settings.js) ============
@@ -591,14 +931,24 @@ function modelRow(m) {
   } else {
     actions.push(`<button class="btn primary" data-act="download" data-id="${m.id}">Download</button>`);
   }
+  if (m.downloaded && m.active) {
+    actions.length = 0;
+    actions.push(
+      `<span class="tag ok sp-active-tag"><svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Active</span>`
+    );
+  }
+  const recommended = m.id === "large-v3-turbo-q5" ? ` <span class="tag rec-badge">Recommended</span>` : "";
+  const name = (m.label || m.id).split("—")[0].trim();
+  const tail = ((m.label || "").split(",").slice(1).join(",") || "").trim();
+  const note = tail ? tail[0].toUpperCase() + tail.slice(1) : (m.lang === "en" ? "English-only" : "Multilingual");
   return `
     <div class="model ${m.active ? "active" : ""}">
       <div class="model-head">
-        <div>
-          <div class="model-title">${m.label}</div>
-          <div class="model-meta">${m.lang === "en" ? "English-only" : "Multilingual"} · id: ${m.id}</div>
+        <div class="model-text">
+          <div class="model-title">${name}${recommended}</div>
+          <div class="model-meta">${m.size_mb ? m.size_mb + " MB · " : ""}${note}${tail && m.lang === "en" ? " · English-only" : ""}</div>
         </div>
-        <div class="row">${actions.join("")}</div>
+        <div class="row model-actions">${actions.join("")}</div>
       </div>
       ${showProgress ? `<div class="progress"><div class="bar" style="width:${pct}%"></div></div>` : ""}
     </div>
@@ -611,36 +961,93 @@ async function refreshModels() {
   modelsEl.querySelectorAll("button[data-act]").forEach((b) => b.addEventListener("click", onModelAction));
 }
 
-// Update the Local/Cloud segmented control + cloud-model field visibility.
+// Update the provider chooser cards + reveal only the relevant sub-panel.
 function reflectProvider(provider, hasKey) {
   if (!providerSegEl) return;
   providerSegEl.querySelectorAll(".seg-btn").forEach((b) => {
-    b.classList.toggle("active", b.dataset.provider === provider);
+    const on = b.dataset.provider === provider;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-checked", on ? "true" : "false");
   });
-  if (cloudModelFieldEl) cloudModelFieldEl.hidden = provider !== "cloud";
-  if (providerDescEl) {
-    if (provider === "cloud") {
-      providerDescEl.textContent = hasKey
-        ? "Audio sent to OpenRouter Whisper (whisper-large-v3-turbo by default). ~6% WER, near-zero hallucination, no LLM polish. Needs internet."
-        : "⚠ Add your OpenRouter key below — cloud falls back to local without it.";
-    } else {
-      providerDescEl.textContent = "Runs on-device via Whisper. Private, offline, free. Pick a larger model below for best accuracy.";
-    }
-  }
+  const localPanel = document.getElementById("local-panel");
+  const cloudPanel = document.getElementById("cloud-panel");
+  if (localPanel) localPanel.classList.toggle("open", provider !== "cloud");
+  if (cloudPanel) cloudPanel.classList.toggle("open", provider === "cloud");
+  const warn = document.getElementById("cloud-key-warning");
+  if (warn) warn.hidden = !(provider === "cloud" && !hasKey);
 }
 
 async function setProvider(provider) {
   const s = await invoke("get_settings");
+  if (s.transcription_provider === provider) {
+    reflectProvider(provider, (s.api_key || "").trim().length > 0);
+    return;
+  }
   s.transcription_provider = provider;
   if (cloudSttModelEl && cloudSttModelEl.value.trim()) {
     s.cloud_stt_model = cloudSttModelEl.value.trim();
   }
-  await invoke("update_settings", { settings: s });
-  reflectProvider(provider, (s.api_key || "").trim().length > 0);
-  if (settingsStatusEl) {
-    settingsStatusEl.textContent =
-      provider === "cloud" ? "Cloud transcription (OpenRouter)." : "Local transcription (Whisper).";
+  try {
+    await invoke("update_settings", { settings: s });
+  } catch (e) {
+    showToast("Couldn't switch provider: " + e, "error");
+    return;
   }
+  reflectProvider(provider, (s.api_key || "").trim().length > 0);
+  showToast(
+    provider === "cloud" ? "Cloud transcription enabled. Audio is sent to your provider." : "On-device transcription enabled. Audio never leaves your Mac.",
+    "success"
+  );
+  await refreshSettingsCard();
+}
+
+// Brief "Saved" tick in the page header — quieter than a toast for routine saves.
+let savedTickTimer = null;
+function flashSaved() {
+  const tick = document.getElementById("settings-saved-tick");
+  if (!tick) return;
+  tick.hidden = false;
+  tick.classList.add("show");
+  clearTimeout(savedTickTimer);
+  savedTickTimer = setTimeout(() => {
+    tick.classList.remove("show");
+    savedTickTimer = setTimeout(() => { tick.hidden = true; }, 250);
+  }, 1400);
+}
+
+// Current hotkey rendered as keycap chips.
+function renderHotkeyChips(customHotkey) {
+  const chips = document.getElementById("hotkey-chips");
+  if (!chips) return;
+  const combo = (customHotkey || "").trim();
+  if (combo) {
+    chips.innerHTML = combo.split("+").map((k) => `<span class="kbd">${escapeHtml(k.trim())}</span>`).join("");
+  } else {
+    chips.innerHTML =
+      `<span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">Space</span>` +
+      `<span class="sp-chip-or">or</span><span class="kbd">F9</span>`;
+  }
+}
+
+let inputDevicesLoaded = false;
+async function populateInputDevices(selected) {
+  const sel = document.getElementById("input-device");
+  if (!sel) return;
+  if (!inputDevicesLoaded) {
+    try {
+      const devices = await invoke("list_input_devices");
+      sel.innerHTML =
+        `<option value="">System default</option>` +
+        devices.map((d) => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join("");
+      inputDevicesLoaded = true;
+    } catch {
+      /* keep the "System default" option */
+    }
+  }
+  if (selected && ![...sel.options].some((o) => o.value === selected)) {
+    sel.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(selected)}">${escapeHtml(selected)} (unavailable)</option>`);
+  }
+  sel.value = selected || "";
 }
 
 async function refreshSettings() {
@@ -652,8 +1059,14 @@ async function refreshSettings() {
 
   if (customVocabEl) customVocabEl.value = s.custom_vocab || "";
   if (smartFormatEl) smartFormatEl.checked = !!s.smart_format;
+  if (playSoundsEl) playSoundsEl.checked = s.play_sounds ?? true;
+  if (spokenPunctuationEl) spokenPunctuationEl.checked = s.spoken_punctuation ?? true;
+  if (livePreviewEl) livePreviewEl.checked = s.live_preview ?? true;
+  if (voiceCommandsEl) voiceCommandsEl.checked = s.voice_commands ?? true;
   if (cloudSttModelEl) cloudSttModelEl.value = s.cloud_stt_model || "openai/whisper-large-v3-turbo";
   reflectProvider(s.transcription_provider || "local", (s.api_key || "").trim().length > 0);
+  renderHotkeyChips(s.custom_hotkey);
+  await populateInputDevices(s.input_device || "");
   if (autostartEl) {
     try {
       const actual = await invoke("get_autostart");
@@ -742,9 +1155,9 @@ async function refreshPromptPreview() {
   if (!promptPreviewEl) return;
   try {
     const p = await invoke("preview_voice_prompt");
-    promptPreviewEl.textContent = p && p.length ? p : "(empty — dictate a few times to build profile)";
+    promptPreviewEl.textContent = p && p.length ? p : "Nothing learned yet. Dictate a few times and Murmr will pick up your vocabulary.";
   } catch {
-    promptPreviewEl.textContent = "(error)";
+    promptPreviewEl.textContent = "Couldn't load";
   }
 }
 
@@ -754,44 +1167,65 @@ async function onModelAction(e) {
   try {
     if (act === "download") {
       downloading.set(id, { bytes: 0, total: 0 });
-      settingsStatusEl.textContent = `Downloading ${id}…`;
+      settingsStatusEl.textContent = "Downloading model…";
       await invoke("download_model", { id });
+      showToast('Model downloaded. Click "Use this" to switch to it.', "success");
       await refreshModels();
     } else if (act === "activate") {
-      const s = await invoke("set_active_model", { id });
-      settingsStatusEl.textContent = `Active model set to ${s.active_model}.`;
+      await invoke("set_active_model", { id });
+      settingsStatusEl.textContent = "Model activated.";
       await refreshModels();
       await refreshSettingsCard();
     } else if (act === "delete") {
+      const models = await invoke("list_models");
+      if (models.some((m) => m.id === id && m.active)) {
+        showToast("Can't delete the active model — switch models first.", "error");
+        return;
+      }
       await invoke("delete_model", { id });
-      settingsStatusEl.textContent = `Deleted ${id}.`;
+      settingsStatusEl.textContent = "Model deleted.";
       await refreshModels();
     }
   } catch (err) {
-    settingsStatusEl.textContent = "Error: " + err;
+    settingsStatusEl.textContent = "";
+    showToast(`Couldn't ${act} model: ${err}`, "error");
   }
 }
 
 async function saveBehavior() {
-  const s = await invoke("get_settings");
-  s.language = langEl.value;
-  s.auto_paste = autoPasteEl.checked;
-  s.api_key = orKeyEl.value.trim();
-  s.chat_model = orChatModelEl.value.trim() || "meta-llama/llama-3.1-8b-instruct";
-  if (customVocabEl) s.custom_vocab = customVocabEl.value;
-  if (activeModeEl) s.active_mode = activeModeEl.value || "notes";
-  if (smartFormatEl) s.smart_format = smartFormatEl.checked;
-  if (cloudSttModelEl) s.cloud_stt_model = cloudSttModelEl.value.trim() || "google/gemini-2.5-flash";
-  if (customModesListEl) {
-    const rows = customModesListEl.querySelectorAll(".custom-mode-row");
-    s.custom_modes = [...rows].map((row) => ({
-      id: row.dataset.id,
-      name: row.querySelector(".cm-name")?.value.trim() || "Untitled",
-      terms: row.querySelector(".cm-terms")?.value || "",
-    }));
+  try {
+    const s = await invoke("get_settings");
+    s.language = langEl.value;
+    s.auto_paste = autoPasteEl.checked;
+    s.api_key = orKeyEl.value.trim();
+    s.chat_model = orChatModelEl.value.trim() || "meta-llama/llama-3.1-8b-instruct";
+    if (customVocabEl) s.custom_vocab = customVocabEl.value;
+    if (activeModeEl) s.active_mode = activeModeEl.value || "notes";
+    if (smartFormatEl) s.smart_format = smartFormatEl.checked;
+    if (cloudSttModelEl) s.cloud_stt_model = cloudSttModelEl.value.trim() || "openai/whisper-large-v3-turbo";
+    s.play_sounds = playSoundsEl ? playSoundsEl.checked : (s.play_sounds ?? true);
+    s.spoken_punctuation = spokenPunctuationEl ? spokenPunctuationEl.checked : (s.spoken_punctuation ?? true);
+    s.live_preview = livePreviewEl ? livePreviewEl.checked : (s.live_preview ?? true);
+    s.voice_commands = voiceCommandsEl ? voiceCommandsEl.checked : (s.voice_commands ?? true);
+    if (inputDeviceEl) s.input_device = inputDeviceEl.value || "";
+    s.replacements = s.replacements ?? [];
+    s.snippets = s.snippets ?? [];
+    if (customModesListEl) {
+      const rows = customModesListEl.querySelectorAll(".custom-mode-row");
+      s.custom_modes = [...rows].map((row) => ({
+        id: row.dataset.id,
+        name: row.querySelector(".cm-name")?.value.trim() || "Untitled",
+        terms: row.querySelector(".cm-terms")?.value || "",
+      }));
+    }
+    await invoke("update_settings", { settings: s });
+    flashSaved();
+    const warn = document.getElementById("cloud-key-warning");
+    if (warn) warn.hidden = !(s.transcription_provider === "cloud" && !s.api_key.trim());
+  } catch (e) {
+    showToast("Couldn't save settings: " + e, "error");
+    return;
   }
-  await invoke("update_settings", { settings: s });
-  if (settingsStatusEl) settingsStatusEl.textContent = "Settings saved.";
   await refreshSettingsCard();
   await refreshStats();
   await refreshPromptPreview();
@@ -802,49 +1236,57 @@ async function onAutostartToggle() {
   try {
     const enabled = await invoke("set_autostart", { enable: autostartEl.checked });
     autostartEl.checked = !!enabled;
-    if (settingsStatusEl) {
-      settingsStatusEl.textContent = enabled ? "Autostart enabled." : "Autostart disabled.";
-    }
+    flashSaved();
   } catch (e) {
-    if (settingsStatusEl) settingsStatusEl.textContent = "Autostart error: " + e;
     autostartEl.checked = !autostartEl.checked;
+    showToast("Couldn't change launch on login: " + e, "error");
   }
 }
 
 async function testOpenRouter() {
-  orStatusEl.textContent = "Testing…";
+  if (!orStatusEl) return;
+  if (!orKeyEl.value.trim()) {
+    orStatusEl.textContent = "Enter your API key first.";
+    orStatusEl.className = "sp-test-status err";
+    orKeyEl.focus();
+    return;
+  }
+  orStatusEl.innerHTML = `<span class="sp-spinner" aria-hidden="true"></span>Testing…`;
+  orStatusEl.className = "sp-test-status busy";
+  if (orTestBtn) orTestBtn.disabled = true;
   try {
     const msg = await invoke("test_openrouter", { apiKey: orKeyEl.value.trim() });
-    orStatusEl.textContent = msg;
-    orStatusEl.style.color = "var(--good)";
+    orStatusEl.textContent = "✓ " + (msg || "Key verified");
+    orStatusEl.className = "sp-test-status ok";
+    showToast("Key verified.", "success");
   } catch (e) {
-    orStatusEl.textContent = "Failed: " + e;
-    orStatusEl.style.color = "var(--bad)";
+    orStatusEl.textContent = "✗ " + e;
+    orStatusEl.className = "sp-test-status err";
+    showToast("Couldn't verify key: " + e, "error");
+  } finally {
+    if (orTestBtn) orTestBtn.disabled = false;
   }
 }
 
 async function clearHistoryAction() {
   if (!confirm("Clear all dictation history? This also resets your voice profile and stats.")) return;
-  await invoke("clear_history");
-  await refreshAll();
-  settingsStatusEl.textContent = "History cleared.";
+  try {
+    await invoke("clear_history");
+    await refreshAll();
+    showToast("History cleared.", "success");
+  } catch (e) {
+    showToast("Couldn't clear history: " + e, "error");
+  }
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
   btn = document.querySelector("#rec");
   status = document.querySelector("#status");
-  providerInfo = document.querySelector("#provider-info");
-  statWords = document.querySelector("#stat-words");
-  statWpm = document.querySelector("#stat-wpm");
-  statStreak = document.querySelector("#stat-streak");
   statWords2 = document.querySelector("#stat-words-2");
   statWpm2 = document.querySelector("#stat-wpm-2");
   statStreak2 = document.querySelector("#stat-streak-2");
   statSessions = document.querySelector("#stat-sessions");
   profileWords = document.querySelector("#profile-words");
-  profileBar = document.querySelector("#profile-bar");
-  profileStatus = document.querySelector("#profile-status");
-  profileInfo = document.querySelector("#profile-info");
   historyContainer = document.querySelector("#history-container");
   historySearchEl = document.querySelector("#history-search");
   historyCountEl = document.querySelector("#history-count");
@@ -875,16 +1317,32 @@ window.addEventListener("DOMContentLoaded", async () => {
   promptPreviewEl = document.querySelector("#prompt-preview");
   smartFormatEl = document.querySelector("#smart-format");
   autostartEl = document.querySelector("#autostart");
+  playSoundsEl = document.querySelector("#play-sounds");
+  spokenPunctuationEl = document.querySelector("#spoken-punctuation");
   providerSegEl = document.querySelector("#provider-seg");
-  providerDescEl = document.querySelector("#provider-desc");
-  cloudModelFieldEl = document.querySelector("#cloud-model-field");
   cloudSttModelEl = document.querySelector("#cloud-stt-model");
+  livePreviewEl = document.querySelector("#live-preview");
+  voiceCommandsEl = document.querySelector("#voice-commands");
+  inputDeviceEl = document.querySelector("#input-device");
   if (providerSegEl) {
     providerSegEl.querySelectorAll(".seg-btn").forEach((b) => {
       b.addEventListener("click", () => setProvider(b.dataset.provider));
     });
   }
   if (cloudSttModelEl) cloudSttModelEl.addEventListener("change", saveBehavior);
+  if (livePreviewEl) livePreviewEl.addEventListener("change", saveBehavior);
+  if (voiceCommandsEl) voiceCommandsEl.addEventListener("change", saveBehavior);
+  if (inputDeviceEl) inputDeviceEl.addEventListener("change", saveBehavior);
+  const hotkeyChangeBtn = document.querySelector("#hotkey-change");
+  const hotkeyEditor = document.querySelector("#hotkey-editor");
+  if (hotkeyChangeBtn && hotkeyEditor) {
+    hotkeyChangeBtn.addEventListener("click", () => {
+      const open = hotkeyEditor.classList.toggle("open");
+      hotkeyChangeBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      hotkeyChangeBtn.textContent = open ? "Done" : "Change";
+      if (open) document.querySelector("#custom-hotkey")?.focus();
+    });
+  }
   const customHotkeyEl = document.querySelector("#custom-hotkey");
   const customHotkeyCapture = document.querySelector("#custom-hotkey-capture");
   const customHotkeyClear = document.querySelector("#custom-hotkey-clear");
@@ -892,19 +1350,26 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (customHotkeyEl) {
     invoke("get_settings").then((s) => { customHotkeyEl.value = s.custom_hotkey || ""; });
     const save = async () => {
-      const s = await invoke("get_settings");
-      s.custom_hotkey = customHotkeyEl.value.trim();
-      await invoke("update_settings", { settings: s });
-      if (customHotkeyStatus) customHotkeyStatus.textContent = s.custom_hotkey
-        ? `Saved: ${s.custom_hotkey} — restart Murmr for the new hotkey to take effect.`
-        : "Custom hotkey cleared — restart Murmr.";
+      try {
+        const s = await invoke("get_settings");
+        s.custom_hotkey = customHotkeyEl.value.trim();
+        await invoke("update_settings", { settings: s });
+        if (customHotkeyStatus) customHotkeyStatus.textContent = s.custom_hotkey
+          ? `Saved: ${s.custom_hotkey} — restart Murmr for the new hotkey to take effect.`
+          : "Custom hotkey cleared — restart Murmr.";
+        renderHotkeyChips(s.custom_hotkey);
+        flashSaved();
+      } catch (e) {
+        showToast("Couldn't save hotkey: " + e, "error");
+      }
     };
     customHotkeyEl.addEventListener("change", save);
     customHotkeyEl.addEventListener("blur", save);
     if (customHotkeyCapture) {
       customHotkeyCapture.addEventListener("click", () => {
         customHotkeyEl.focus();
-        if (customHotkeyStatus) customHotkeyStatus.textContent = "Hold modifiers (Ctrl/Shift/Alt/Cmd) then press a key — or just release modifiers to capture a modifier-only combo (macOS hold-to-talk).";
+        const prevStatusText = customHotkeyStatus ? customHotkeyStatus.textContent : "";
+        if (customHotkeyStatus) customHotkeyStatus.textContent = "Hold modifiers (Ctrl/Shift/Alt/Cmd) then press a key — or just release modifiers to capture a modifier-only combo (macOS hold-to-talk). Press Esc to cancel.";
         const isMac = navigator.platform.toLowerCase().includes("mac");
         const modParts = (ctrl, shift, alt, meta) => {
           const p = [];
@@ -916,13 +1381,23 @@ window.addEventListener("DOMContentLoaded", async () => {
         };
         let modSnapshot = { ctrl: false, shift: false, alt: false, meta: false };
         let sawMod = false;
-        const finish = (value) => {
-          customHotkeyEl.value = value;
+        const teardown = () => {
           document.removeEventListener("keydown", onKey, true);
           document.removeEventListener("keyup", onKeyUp, true);
+        };
+        const finish = (value) => {
+          customHotkeyEl.value = value;
+          teardown();
           save();
         };
         const onKey = (e) => {
+          if (e.key === "Escape") {
+            // Escape hatch — abandon capture without changing the combo.
+            e.preventDefault();
+            teardown();
+            if (customHotkeyStatus) customHotkeyStatus.textContent = prevStatusText;
+            return;
+          }
           const isModKey = !e.code || e.code.startsWith("Meta") || e.code.startsWith("Shift")
             || e.code.startsWith("Control") || e.code.startsWith("Alt");
           if (isModKey) {
@@ -972,9 +1447,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   const orKeyToggle = document.querySelector("#or-key-toggle");
   if (orKeyToggle) {
     orKeyToggle.addEventListener("click", () => {
-      const isPwd = orKeyEl.type === "password";
-      orKeyEl.type = isPwd ? "text" : "password";
-      orKeyToggle.textContent = isPwd ? "Hide" : "Show";
+      const reveal = orKeyEl.type === "password";
+      orKeyEl.type = reveal ? "text" : "password";
+      orKeyToggle.setAttribute("aria-pressed", reveal ? "true" : "false");
+      orKeyToggle.setAttribute("aria-label", reveal ? "Hide key" : "Show key");
+      const open = orKeyToggle.querySelector(".sp-eye-open");
+      const closed = orKeyToggle.querySelector(".sp-eye-closed");
+      if (open && closed) {
+        open.hidden = reveal;
+        closed.hidden = !reveal;
+      }
     });
   }
   if (orTestBtn) orTestBtn.addEventListener("click", testOpenRouter);
@@ -1042,8 +1524,29 @@ window.addEventListener("DOMContentLoaded", async () => {
   langEl.addEventListener("change", saveBehavior);
   autoPasteEl.addEventListener("change", saveBehavior);
   if (smartFormatEl) smartFormatEl.addEventListener("change", saveBehavior);
+  if (playSoundsEl) playSoundsEl.addEventListener("change", saveBehavior);
+  if (spokenPunctuationEl) spokenPunctuationEl.addEventListener("change", saveBehavior);
   if (autostartEl) autostartEl.addEventListener("change", onAutostartToggle);
   document.querySelector("#clear-history").addEventListener("click", clearHistoryAction);
+
+  // Dictionary tab wiring
+  const vocabAddBtn = document.getElementById("dict-vocab-add");
+  if (vocabAddBtn) vocabAddBtn.addEventListener("click", addVocabTerm);
+  const vocabInput = document.getElementById("dict-vocab-input");
+  if (vocabInput) {
+    vocabInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addVocabTerm();
+      }
+    });
+  }
+  const replAddBtn = document.getElementById("dict-replacement-add");
+  if (replAddBtn) replAddBtn.addEventListener("click", addReplacementRow);
+
+  // Snippets tab wiring
+  const snippetAddBtn = document.getElementById("snippet-add");
+  if (snippetAddBtn) snippetAddBtn.addEventListener("click", addSnippet);
 
   await listen("rec-state", (e) => {
     const s = e.payload;
@@ -1054,28 +1557,38 @@ window.addEventListener("DOMContentLoaded", async () => {
       status.textContent = "Transcribing…";
     } else if (s === "done") {
       setRecording(false);
-      status.textContent = "Done. Pasted + clipboard.";
+      status.textContent = "Pasted and copied to your clipboard.";
     } else if (s === "idle") {
       setRecording(false);
+      status.textContent = "";
     }
   });
   await listen("rec-error", (e) => {
-    status.textContent = "Error: " + e.payload;
+    // Toast is the single error channel — reset the status line to idle.
+    status.textContent = "";
+    showToast("Couldn't complete dictation: " + e.payload, "error");
     setRecording(false);
   });
-  await listen("history-changed", () => refreshAll());
+  await listen("provider-fallback", (e) => {
+    showToast(e.payload || "Cloud transcription unavailable — fell back to local.", "info");
+  });
+  await listen("history-changed", () => {
+    onboardingDictationSucceeded();
+    return refreshAll();
+  });
   await listen("settings-changed", refreshSettingsCard);
   await listen("model-progress", async (e) => {
     const p = e.payload;
     if (p.error) {
       downloading.delete(p.id);
-      settingsStatusEl.textContent = `Download failed (${p.id}): ${p.error}`;
+      settingsStatusEl.textContent = "";
+      showToast(`Couldn't download model: ${p.error}`, "error");
       await refreshModels();
       return;
     }
     if (p.done) {
       downloading.delete(p.id);
-      settingsStatusEl.textContent = `Downloaded ${p.id}.`;
+      settingsStatusEl.textContent = "Model downloaded.";
       await refreshModels();
       return;
     }
@@ -1083,6 +1596,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     await refreshModels();
   });
 
-  setTab("home");
+  let savedTab = "home";
+  try { savedTab = localStorage.getItem("activeTab") || "home"; } catch { /* ignore */ }
+  setTab(savedTab);
   await refreshAll();
+  await initOnboarding();
 });

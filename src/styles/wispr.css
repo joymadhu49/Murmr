@@ -513,7 +513,7 @@ body.with-sidebar.sidebar-collapsed .main {
 .history-row {
   background: var(--panel) !important;
   border: 1px solid var(--border) !important;
-  border-radius: 8px !important;
+  border-radius: 12px !important;
   margin-bottom: 6px;
   padding: 14px 18px !important;
   grid-template-columns: 80px minmax(0, 1fr) auto !important;
@@ -602,7 +602,7 @@ input[type="text"], input[type="search"], input[type="password"], select, textar
   color: var(--text) !important;
   font-size: 13px !important;
   padding: 9px 12px !important;
-  border-radius: 8px !important;
+  border-radius: 10px !important; /* match settings-pro.css input radius */
 }
 input:focus, select:focus, textarea:focus {
   outline: none !important;
@@ -870,61 +870,9 @@ body.with-sidebar.sidebar-collapsed .main {
   vertical-align: 1px;
 }
 
-/* Banner — dark photo-style with serif title */
-.style-banner {
-  position: relative;
-  overflow: hidden;
-  border-radius: 14px;
-  padding: 26px 28px 24px;
-  margin-bottom: 22px;
-  color: #fff;
-  min-height: 110px;
-}
-.cleanup-banner,
-.banner-personal,
-.banner-work,
-.banner-email,
-.banner-other {
-  background:
-    radial-gradient(ellipse at 75% 40%, rgba(120,90,140,0.5) 0%, transparent 60%),
-    linear-gradient(135deg, #2a1f2e 0%, #1f1a2e 60%, #14101e 100%);
-}
-.cleanup-banner { min-height: 140px; }
-.style-banner-title {
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 22px;
-  font-weight: 400;
-  color: #fff;
-  margin: 0 0 10px;
-  line-height: 1.25;
-  letter-spacing: 0.01em;
-  max-width: 70%;
-}
-.style-banner-sub {
-  font-size: 12.5px;
-  color: rgba(255,255,255,0.7);
-  margin: 0 0 8px;
-  line-height: 1.5;
-  max-width: 70%;
-}
-.style-banner-note {
-  font-size: 12px;
-  color: rgba(255,255,255,0.55);
-  margin: 0;
-  line-height: 1.5;
-  max-width: 75%;
-}
+/* (Removed: dead .style-banner/.cleanup-banner/.banner-apps rules — the dark
+   banners were replaced by the slim .style-caption row in the markup.) */
 
-/* App-icon cluster on banner right */
-.banner-apps {
-  position: absolute;
-  right: 28px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
 .app-dot {
   width: 38px; height: 38px;
   border-radius: 50%;
@@ -939,13 +887,6 @@ body.with-sidebar.sidebar-collapsed .main {
   letter-spacing: 0.02em;
   backdrop-filter: blur(4px);
 }
-.app-dot.dot-plus {
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.7);
-  font-weight: 400;
-  font-size: 16px;
-}
-
 /* Cleanup card grid — 4 across */
 .cleanup-grid {
   display: grid;
@@ -1141,6 +1082,4 @@ body.with-sidebar.sidebar-collapsed .main {
   .style-card-grid { grid-template-columns: 1fr; }
   .style-tabs { flex-wrap: wrap; }
   .style-tab-btn { padding: 8px 10px 10px; font-size: 12px; }
-  .banner-apps { display: none; }
-  .style-banner-title, .style-banner-sub, .style-banner-note { max-width: 100%; }
 }

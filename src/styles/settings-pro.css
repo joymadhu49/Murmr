@@ -1,0 +1,603 @@
+/* =========================================================================
+   settings-pro.css — Settings page redesign. Loaded last; overrides earlier
+   sheets without !important wherever possible. Everything scoped to
+   #settings-tab.
+   ========================================================================= */
+
+/* ============ Page header ============ */
+
+#settings-tab .sp-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 6px 0 16px;
+}
+#settings-tab .sp-page-title {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  /* match the 18px page-title size from the compact.css density pass */
+  font-size: 18px;
+  letter-spacing: -0.3px;
+  color: var(--text);
+  margin: 0;
+}
+#settings-tab .sp-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--good);
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 220ms ease, transform 220ms ease;
+  pointer-events: none;
+}
+#settings-tab .sp-saved.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ============ Cards ============ */
+
+#settings-tab .sp-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin: 0 0 14px;
+  box-shadow: var(--shadow-soft);
+}
+#settings-tab .sp-card:hover {
+  border-color: var(--border);
+  box-shadow: var(--shadow-soft);
+  transform: none;
+}
+#settings-tab .sp-card > h3 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+#settings-tab .sp-card > h3::before { display: none; }
+
+/* ============ Provider chooser (hero) ============ */
+
+#settings-tab .sp-provider-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  background: none;
+  border: none;
+  padding: 0;
+}
+#settings-tab .sp-provider-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  text-align: left;
+  padding: 16px 16px 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 180ms ease, background 180ms ease,
+              box-shadow 180ms ease, transform 180ms ease;
+}
+#settings-tab .sp-provider-card:hover {
+  border-color: var(--border-strong);
+  background: var(--row-hover);
+  transform: translateY(-1px);
+}
+#settings-tab .sp-provider-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+#settings-tab .sp-provider-card.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  box-shadow: 0 0 0 1px var(--accent) inset, 0 6px 20px -14px rgba(139, 124, 246, 0.6);
+  transform: none;
+}
+#settings-tab .sp-provider-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  transition: color 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+#settings-tab .sp-provider-card.active .sp-provider-icon {
+  color: var(--accent);
+  background: #fff;
+  border-color: var(--accent-2);
+}
+#settings-tab .sp-provider-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: -0.1px;
+}
+#settings-tab .sp-provider-desc {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+#settings-tab .sp-provider-card.active .sp-provider-desc {
+  color: var(--text-2);
+}
+#settings-tab .sp-provider-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 180ms ease, transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+#settings-tab .sp-provider-card.active .sp-provider-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* ============ Conditional reveal panels ============ */
+
+#settings-tab .sp-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 280ms cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 200ms ease;
+}
+#settings-tab .sp-reveal.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+#settings-tab .sp-reveal-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+#settings-tab .sp-reveal .sp-panel-body {
+  padding-top: 14px;
+}
+#settings-tab .sp-reveal:not(.open) .sp-panel-body {
+  visibility: hidden;
+  transition: visibility 0s 280ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  #settings-tab .sp-reveal,
+  #settings-tab .sp-provider-card,
+  #settings-tab .sp-provider-check,
+  #settings-tab .sp-saved {
+    transition: none;
+  }
+}
+
+/* ============ Cloud panel ============ */
+
+#settings-tab .sp-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  background: var(--cream);
+  border: 1px solid var(--cream-border);
+  color: #7a5c12;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+#settings-tab .sp-warn svg { flex: none; }
+
+#settings-tab .sp-key-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+#settings-tab .sp-key-row > input {
+  flex: 1;
+  min-width: 200px;
+}
+#settings-tab .sp-key-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+}
+#settings-tab .sp-key-wrap input {
+  flex: 1;
+  width: 100%;
+  padding-right: 38px;
+}
+#settings-tab .sp-eye {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+#settings-tab .sp-eye:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+#settings-tab .sp-eye:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+#settings-tab .sp-test-status {
+  min-height: 18px;
+  margin-top: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#settings-tab .sp-test-status.ok { color: var(--good); }
+#settings-tab .sp-test-status.err { color: var(--bad); }
+#settings-tab .sp-test-status.busy { color: var(--muted); font-weight: 500; }
+#settings-tab .sp-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: sp-spin 700ms linear infinite;
+  display: inline-block;
+  flex: none;
+}
+@keyframes sp-spin { to { transform: rotate(360deg); } }
+
+#settings-tab .sp-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ============ Rows (toggles / selects / hotkey) ============ */
+
+#settings-tab .sp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+}
+#settings-tab .sp-card .sp-row + .sp-row {
+  border-top: 1px solid var(--border);
+}
+#settings-tab .sp-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+#settings-tab .sp-row-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.1px;
+}
+#settings-tab .sp-row-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+#settings-tab .sp-row-ctl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+#settings-tab .sp-toggle-row { cursor: pointer; }
+#settings-tab .sp-toggle-row:hover .sp-row-label { color: var(--text); }
+
+#settings-tab .sp-select-row select,
+#settings-tab .sp-select-row input[type="text"] {
+  flex: none;
+  width: 240px;
+  max-width: 46%;
+}
+
+/* ============ iOS-style switch ============ */
+
+#settings-tab .sp-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 24px;
+  flex: none;
+}
+#settings-tab .sp-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+#settings-tab .sp-knob {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--border-strong);
+  transition: background 180ms ease, box-shadow 180ms ease;
+  pointer-events: none;
+}
+#settings-tab .sp-knob::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+#settings-tab .sp-switch input:checked + .sp-knob {
+  background: var(--accent);
+}
+#settings-tab .sp-switch input:checked + .sp-knob::after {
+  transform: translateX(16px);
+}
+#settings-tab .sp-switch input:focus-visible + .sp-knob {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+
+/* ============ Hotkey chips ============ */
+
+#settings-tab .sp-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+#settings-tab .sp-chips .kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+#settings-tab .sp-chip-or {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 2px;
+}
+
+/* ============ Inputs ============ */
+
+#settings-tab input[type="text"],
+#settings-tab input[type="password"],
+#settings-tab select,
+#settings-tab textarea {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: var(--text);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+#settings-tab input:focus-visible,
+#settings-tab select:focus-visible,
+#settings-tab textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+#settings-tab textarea {
+  width: 100%;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12.5px;
+  resize: vertical;
+}
+#settings-tab .field { margin-bottom: 14px; }
+#settings-tab .field:last-child { margin-bottom: 0; }
+#settings-tab .field > label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+
+#settings-tab .sp-small-btn {
+  padding: 6px 12px;
+  font-size: 12.5px;
+  border-radius: 9px;
+  flex: none;
+}
+#settings-tab button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ============ Model list ============ */
+
+#settings-tab .model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#settings-tab .model {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 11px 14px;
+  gap: 8px;
+  transform: none;
+}
+#settings-tab .model:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--row-hover);
+  border-color: var(--border-strong);
+}
+#settings-tab .model.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  box-shadow: none;
+}
+#settings-tab .model-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+#settings-tab .model-text { min-width: 0; }
+#settings-tab .model-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+#settings-tab .model-meta {
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+#settings-tab .model-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#settings-tab .tag.rec-badge {
+  margin-left: 6px;
+  padding: 2px 8px;
+  font-size: 10px;
+  background: var(--accent-pill-bg);
+  color: var(--accent-pill-text);
+  border: none;
+}
+#settings-tab .sp-active-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-size: 11px;
+}
+#settings-tab .status-line {
+  margin-top: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+#settings-tab .status-line:empty { display: none; }
+
+/* ============ Advanced disclosure ============ */
+
+#settings-tab .sp-advanced { padding: 0; overflow: hidden; }
+#settings-tab .sp-advanced > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 20px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+#settings-tab .sp-advanced > summary::-webkit-details-marker { display: none; }
+#settings-tab .sp-advanced > summary:hover { background: var(--row-hover); }
+#settings-tab .sp-advanced > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 14px;
+}
+#settings-tab .sp-advanced-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+#settings-tab .sp-advanced-sub {
+  font-size: 12px;
+  color: var(--muted-2);
+  flex: 1;
+}
+#settings-tab .sp-advanced-chev {
+  color: var(--muted);
+  transition: transform 200ms ease;
+}
+#settings-tab .sp-advanced[open] .sp-advanced-chev { transform: rotate(180deg); }
+#settings-tab .sp-advanced-body {
+  padding: 4px 20px 18px;
+  border-top: 1px solid var(--border);
+}
+#settings-tab .sp-advanced-body .sp-hint { margin: 12px 0 14px; }
+
+/* ============ Danger zone ============ */
+
+#settings-tab .sp-danger { border-color: rgba(194, 69, 47, 0.35); }
+#settings-tab .sp-danger > h3 { color: var(--bad); }
+#settings-tab .sp-danger-btn {
+  background: transparent;
+  border: 1px solid var(--bad);
+  color: var(--bad);
+  border-radius: 9px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  flex: none;
+}
+#settings-tab .sp-danger-btn:hover {
+  background: rgba(194, 69, 47, 0.08);
+}
+
+/* ============ Responsive ============ */
+
+@media (max-width: 640px) {
+  #settings-tab .sp-provider-grid { grid-template-columns: 1fr; }
+  #settings-tab .sp-select-row select,
+  #settings-tab .sp-select-row input[type="text"] { max-width: 60%; }
+}

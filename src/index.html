@@ -11,6 +11,9 @@
     <link rel="stylesheet" href="styles/polish-history.css" />
     <link rel="stylesheet" href="styles/polish-settings.css" />
     <link rel="stylesheet" href="styles/wispr.css" />
+    <link rel="stylesheet" href="styles/hub.css" />
+    <link rel="stylesheet" href="styles/compact.css" />
+    <link rel="stylesheet" href="styles/settings-pro.css" />
     <script type="module" src="/main.js" defer></script>
   </head>
   <body class="with-sidebar">
@@ -76,6 +79,14 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
         <span class="nav-label">Style</span>
       </button>
+      <button class="nav-btn" data-tab="dictionary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>
+        <span class="nav-label">Dictionary</span>
+      </button>
+      <button class="nav-btn" data-tab="snippets">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+        <span class="nav-label">Snippets</span>
+      </button>
 
       <div class="spacer"></div>
 
@@ -131,7 +142,7 @@
 
           <section class="vp-section">
             <div class="vp-section-head">
-              <h3 class="vp-section-title">Your terms</h3>
+              <h3 class="vp-section-title">Your vocabulary</h3>
               <a class="vp-action" id="profile-vocab-edit">Edit</a>
             </div>
             <div id="profile-vocab-list" class="chip-row"></div>
@@ -149,65 +160,158 @@
         </div>
 
         <div id="settings-tab" style="display:none;">
-          <div class="card">
-            <h3>Hotkey</h3>
-            <div class="hotkey-row">
-              <span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">Space</span>
-              <span class="muted small">or</span>
-              <span class="kbd">F9</span>
-              <span class="muted small" id="mac-hotkey-inline" style="display:none;">· macOS: hold ⌥ Right Option (or set a modifier-only combo below)</span>
-            </div>
-            <div class="field" style="margin-top:10px;">
-              <label>Add a custom hotkey</label>
-              <div class="row">
-                <input id="custom-hotkey" type="text" placeholder="Ctrl+Shift  ·  Cmd+Shift+P  ·  F9" style="flex:1;min-width:240px;" />
-                <button id="custom-hotkey-capture" class="btn" type="button">Record keys</button>
-                <button id="custom-hotkey-clear" class="btn" type="button">Clear</button>
-              </div>
-              <div class="muted small" id="custom-hotkey-status" style="margin-top:4px;">Type a combo or click <strong>Record keys</strong>. On macOS, modifier-only combos (e.g. <em>Ctrl+Shift</em>) work as hold-to-talk — 180&nbsp;ms hold required; pressing any other key while held cancels. Restart Murmr after changing.</div>
-            </div>
+          <div class="sp-head">
+            <h1 class="sp-page-title">Settings</h1>
+            <span id="settings-saved-tick" class="sp-saved" aria-live="polite" hidden>
+              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Saved
+            </span>
           </div>
 
-          <div class="card" style="margin-top:14px;">
+          <section class="card sp-card sp-hero">
             <h3>Transcription</h3>
-            <p class="muted small" style="margin-top:0;">Where speech-to-text runs.</p>
-            <div class="field">
-              <div class="seg" id="provider-seg">
-                <button type="button" class="seg-btn" data-provider="local">Local · offline &amp; private</button>
-                <button type="button" class="seg-btn" data-provider="cloud">Cloud · OpenRouter Whisper</button>
-              </div>
-              <div class="muted small" id="provider-desc"></div>
+            <div class="sp-provider-grid" id="provider-seg" role="radiogroup" aria-label="Transcription provider">
+              <button type="button" class="seg-btn sp-provider-card" data-provider="local" role="radio" aria-checked="false">
+                <span class="sp-provider-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.4-7 9.5C8 19.4 5 15.5 5 11V6l7-3z"/><path d="M9 12l2 2 4-4.5"/></svg>
+                </span>
+                <span class="sp-provider-name">On-device</span>
+                <span class="sp-provider-desc">Private, offline. Whisper runs on your Mac.</span>
+                <span class="sp-provider-check" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="11" height="11"><path d="M2.5 8.5l3.5 3.5 7.5-8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+              </button>
+              <button type="button" class="seg-btn sp-provider-card" data-provider="cloud" role="radio" aria-checked="false">
+                <span class="sp-provider-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4.5 13.5H11L9.5 22 19 10h-6.5L13 2z"/></svg>
+                </span>
+                <span class="sp-provider-name">Cloud</span>
+                <span class="sp-provider-desc">Fastest and most accurate. Audio sent to your provider.</span>
+                <span class="sp-provider-check" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="11" height="11"><path d="M2.5 8.5l3.5 3.5 7.5-8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+              </button>
             </div>
-            <div class="field" id="cloud-model-field" hidden>
-              <label>Cloud Whisper model</label>
-              <input id="cloud-stt-model" type="text" placeholder="openai/whisper-large-v3-turbo" />
-              <div class="muted small">Default: <code>openai/whisper-large-v3-turbo</code> — fastest accurate option (~6% WER, &lt;1 s typical). Alternatives: <code>openai/whisper-large-v3</code> (slightly more accurate), <code>openai/whisper-1</code>. Uses the same OpenRouter key below. No LLM polish applied — Whisper output goes straight to the cursor.</div>
-            </div>
-          </div>
 
-          <div class="card" style="margin-top:14px;">
-            <h3>Smart-format (OpenRouter)</h3>
-            <p class="muted small" style="margin-top:0;">Local transcription uses Whisper; cloud uses OpenRouter. OpenRouter also handles cleanup, polishing, and style.</p>
-            <div class="field">
-              <label>OpenRouter API key</label>
-              <div class="row">
-                <input id="or-key" type="password" placeholder="sk-or-v1-..." style="flex:1;min-width:240px;" autocomplete="off" />
-                <button id="or-key-toggle" class="btn" type="button">Show</button>
-                <button id="or-test" class="btn">Test</button>
+            <div class="sp-reveal" id="local-panel">
+              <div class="sp-reveal-inner">
+                <div class="sp-panel-body">
+                  <div id="models" class="model-list"></div>
+                  <div id="settings-status" class="status-line"></div>
+                </div>
               </div>
-              <div id="or-status" class="muted small"></div>
             </div>
-            <div class="field">
-              <label>Chat model (for cleanup)</label>
-              <input id="or-chat-model" type="text" placeholder="meta-llama/llama-3.1-8b-instruct" />
-              <div class="muted small">Examples: <code>meta-llama/llama-3.1-8b-instruct</code>, <code>openai/gpt-4o-mini</code>, <code>anthropic/claude-3.5-haiku</code>.</div>
-            </div>
-          </div>
 
-          <div class="card" style="margin-top:14px;">
+            <div class="sp-reveal" id="cloud-panel">
+              <div class="sp-reveal-inner">
+                <div class="sp-panel-body">
+                  <div id="cloud-key-warning" class="sp-warn" hidden>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke-linejoin="round"/></svg>
+                    Add an API key or dictation will fall back to on-device.
+                  </div>
+                  <div class="field">
+                    <label for="or-key">OpenRouter API key</label>
+                    <div class="sp-key-row">
+                      <div class="sp-key-wrap">
+                        <input id="or-key" type="password" placeholder="sk-or-v1-…" autocomplete="new-password" autocapitalize="off" spellcheck="false" />
+                        <button id="or-key-toggle" class="sp-eye" type="button" aria-label="Show key" aria-pressed="false">
+                          <svg class="sp-eye-open" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+                          <svg class="sp-eye-closed" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><path d="M4 4l16 16"/></svg>
+                        </button>
+                      </div>
+                      <button id="or-test" class="btn sp-test-btn" type="button">Test key</button>
+                    </div>
+                    <div id="or-status" class="sp-test-status" role="status"></div>
+                    <div class="muted small sp-hint">Create a key at <code>openrouter.ai/settings/keys</code> — one key covers both transcription and AI formatting.</div>
+                  </div>
+                  <div class="field">
+                    <label for="cloud-stt-model">Speech model</label>
+                    <input id="cloud-stt-model" type="text" placeholder="openai/whisper-large-v3-turbo" autocapitalize="off" spellcheck="false" />
+                    <div class="muted small">Default: <code>openai/whisper-large-v3-turbo</code> — fast and accurate. Also works: <code>openai/whisper-large-v3</code>, <code>openai/whisper-1</code>.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card sp-card">
+            <h3>Hotkey</h3>
+            <div class="sp-row">
+              <div class="sp-row-text">
+                <span class="sp-row-label">Push to talk</span>
+                <span class="sp-row-desc">Hold to dictate, release to paste.<span id="mac-hotkey-inline" style="display:none;"> On macOS you can also hold ⌥ Right Option.</span></span>
+              </div>
+              <div class="sp-row-ctl">
+                <span id="hotkey-chips" class="sp-chips"></span>
+                <button id="hotkey-change" class="btn sp-small-btn" type="button" aria-expanded="false" aria-controls="hotkey-editor">Change</button>
+              </div>
+            </div>
+            <div class="sp-reveal" id="hotkey-editor">
+              <div class="sp-reveal-inner">
+                <div class="sp-panel-body">
+                  <div class="field">
+                    <label for="custom-hotkey">Custom combo</label>
+                    <div class="sp-key-row">
+                      <input id="custom-hotkey" type="text" placeholder="Ctrl+Shift  ·  Cmd+Shift+P  ·  F9" autocapitalize="off" spellcheck="false" />
+                      <button id="custom-hotkey-capture" class="btn sp-small-btn" type="button">Record keys</button>
+                      <button id="custom-hotkey-clear" class="btn sp-small-btn" type="button">Clear</button>
+                    </div>
+                    <div class="muted small" id="custom-hotkey-status">Type a combo or click <strong>Record keys</strong>. On macOS, modifier-only combos (e.g. <em>Ctrl+Shift</em>) work as hold-to-talk. Restart Murmr after changing.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card sp-card">
             <h3>Behavior</h3>
-            <div class="field">
-              <label>Language</label>
+            <label class="sp-row sp-toggle-row" for="auto-paste">
+              <span class="sp-row-text">
+                <span class="sp-row-label">Auto-paste</span>
+                <span class="sp-row-desc">Type the result straight into the focused window.</span>
+              </span>
+              <span class="sp-switch"><input id="auto-paste" type="checkbox" /><span class="sp-knob" aria-hidden="true"></span></span>
+            </label>
+            <label class="sp-row sp-toggle-row" for="play-sounds">
+              <span class="sp-row-text">
+                <span class="sp-row-label">Sound feedback</span>
+                <span class="sp-row-desc">Soft chimes when recording starts and text lands.</span>
+              </span>
+              <span class="sp-switch"><input id="play-sounds" type="checkbox" /><span class="sp-knob" aria-hidden="true"></span></span>
+            </label>
+            <label class="sp-row sp-toggle-row" for="spoken-punctuation">
+              <span class="sp-row-text">
+                <span class="sp-row-label">Spoken punctuation</span>
+                <span class="sp-row-desc">Say “period” or “new line” and Murmr types it.</span>
+              </span>
+              <span class="sp-switch"><input id="spoken-punctuation" type="checkbox" /><span class="sp-knob" aria-hidden="true"></span></span>
+            </label>
+            <label class="sp-row sp-toggle-row" for="live-preview">
+              <span class="sp-row-text">
+                <span class="sp-row-label">Live preview</span>
+                <span class="sp-row-desc">Stream words into the HUD while you speak.</span>
+              </span>
+              <span class="sp-switch"><input id="live-preview" type="checkbox" /><span class="sp-knob" aria-hidden="true"></span></span>
+            </label>
+            <label class="sp-row sp-toggle-row" for="voice-commands">
+              <span class="sp-row-text">
+                <span class="sp-row-label">Voice commands</span>
+                <span class="sp-row-desc">“Undo that”, “select all” and friends become keystrokes.</span>
+              </span>
+              <span class="sp-switch"><input id="voice-commands" type="checkbox" /><span class="sp-knob" aria-hidden="true"></span></span>
+            </label>
+            <label class="sp-row sp-toggle-row" for="autostart">
+              <span class="sp-row-text">
+                <span class="sp-row-label">Launch on login</span>
+                <span class="sp-row-desc">Start Murmr quietly when you sign in.</span>
+              </span>
+              <span class="sp-switch"><input id="autostart" type="checkbox" /><span class="sp-knob" aria-hidden="true"></span></span>
+            </label>
+            <div class="sp-row sp-select-row">
+              <label class="sp-row-text" for="lang">
+                <span class="sp-row-label">Language</span>
+                <span class="sp-row-desc">What you speak. Auto detects per dictation.</span>
+              </label>
               <select id="lang">
                 <option value="auto">Auto</option>
                 <option value="en">English</option>
@@ -225,44 +329,67 @@
                 <option value="it">Italian</option>
               </select>
             </div>
-            <div class="field row" style="align-items:center;">
-              <input id="auto-paste" type="checkbox" />
-              <label for="auto-paste" class="opt-label">Auto-paste into focused window</label>
+            <div class="sp-row sp-select-row">
+              <label class="sp-row-text" for="input-device">
+                <span class="sp-row-label">Microphone</span>
+                <span class="sp-row-desc">Which input Murmr listens to.</span>
+              </label>
+              <select id="input-device">
+                <option value="">System default</option>
+              </select>
             </div>
-            <div class="field row" style="align-items:center;">
-              <input id="autostart" type="checkbox" />
-              <label for="autostart" class="opt-label">Launch on login</label>
-            </div>
-            <div class="field row" style="align-items:center;">
-              <input id="smart-format" type="checkbox" />
-              <label for="smart-format" class="opt-label">AI polish (punctuation, fillers, casing)</label>
-            </div>
-            <div class="muted small">Polish uses the OpenRouter chat model selected above.</div>
-          </div>
+          </section>
 
-          <div class="card" style="margin-top:14px;">
-            <h3>Vocabulary</h3>
-            <div class="field">
-              <textarea id="custom-vocab" rows="5" placeholder="One per line — names, jargon, acronyms" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;"></textarea>
+          <section class="card sp-card">
+            <h3>AI formatting</h3>
+            <label class="sp-row sp-toggle-row" for="smart-format">
+              <span class="sp-row-text">
+                <span class="sp-row-label">AI polish</span>
+                <span class="sp-row-desc">Punctuation, casing, and filler-word cleanup.</span>
+              </span>
+              <span class="sp-switch"><input id="smart-format" type="checkbox" /><span class="sp-knob" aria-hidden="true"></span></span>
+            </label>
+            <div class="sp-row sp-select-row">
+              <label class="sp-row-text" for="or-chat-model">
+                <span class="sp-row-label">Chat model</span>
+                <span class="sp-row-desc">OpenRouter model used for cleanup.</span>
+              </label>
+              <input id="or-chat-model" type="text" placeholder="meta-llama/llama-3.1-8b-instruct" autocapitalize="off" spellcheck="false" />
             </div>
-            <div class="field">
-              <label>Modes</label>
-              <div id="custom-modes-list"></div>
-              <button id="add-custom-mode" class="btn" type="button" style="margin-top:8px;">+ Add mode</button>
+            <div class="muted small sp-hint">Cleanup intensity lives in the <strong>Style</strong> tab.</div>
+          </section>
+
+          <details class="card sp-card sp-advanced" id="settings-advanced">
+            <summary>
+              <span class="sp-advanced-title">Advanced</span>
+              <span class="sp-advanced-sub">Vocabulary boost and custom modes</span>
+              <svg class="sp-advanced-chev" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </summary>
+            <div class="sp-advanced-body">
+              <div class="muted small sp-hint">Manage your day-to-day vocabulary in the <strong>Dictionary</strong> tab — this list only biases recognition.</div>
+              <div class="field">
+                <label for="custom-vocab">Vocabulary boost</label>
+                <textarea id="custom-vocab" rows="4" placeholder="One per line — names, jargon, acronyms"></textarea>
+              </div>
+              <div class="field">
+                <label>Custom modes</label>
+                <div id="custom-modes-list"></div>
+                <button id="add-custom-mode" class="btn sp-small-btn" type="button" style="margin-top:8px;">+ Add mode</button>
+              </div>
+              <div id="prompt-preview" hidden></div>
             </div>
-            <div id="prompt-preview" hidden></div>
-          </div>
+          </details>
 
-          <div class="card" style="margin-top:14px;">
-            <h3>Local models</h3>
-            <div id="models" class="model-list"></div>
-            <div id="settings-status" class="status-line" style="margin-top:10px;"></div>
-          </div>
-
-          <div class="card" style="margin-top:14px;">
+          <section class="card sp-card sp-danger">
             <h3>Danger zone</h3>
-            <button class="btn danger" id="clear-history">Clear history</button>
-          </div>
+            <div class="sp-row">
+              <div class="sp-row-text">
+                <span class="sp-row-label">Clear history</span>
+                <span class="sp-row-desc">Deletes every dictation, your voice profile, and stats.</span>
+              </div>
+              <button class="btn danger sp-danger-btn" id="clear-history" type="button">Clear history</button>
+            </div>
+          </section>
         </div>
 
         <div id="style-tab" style="display:none;">
@@ -273,15 +400,13 @@
             <button class="style-tab-btn" data-style-tab="work">Work messages</button>
             <button class="style-tab-btn" data-style-tab="email">Email</button>
             <button class="style-tab-btn" data-style-tab="other">Other</button>
-            <button class="style-tab-btn" data-style-tab="cleanup">Auto Cleanup <span class="beta-pill">Beta</span></button>
+            <button class="style-tab-btn" data-style-tab="cleanup">Auto cleanup <span class="beta-pill">Beta</span></button>
           </nav>
 
           <!-- Auto Cleanup sub-tab -->
           <div class="style-sub" data-sub="cleanup" hidden>
-            <div class="style-banner cleanup-banner">
-              <h2 class="style-banner-title">Auto Cleanup applies to all your dictations</h2>
-              <p class="style-banner-sub">Choose the level of cleanup that's automatically applied every time, across all apps.</p>
-              <p class="style-banner-note">Note your original dictation is never lost. Just go to the three dots next to a recent dictation in the Home tab, then click "Undo AI edit."</p>
+            <div class="style-caption">
+              <span class="style-caption-text">Applied to every dictation, in all apps. Originals are kept — use "Undo AI edit" in Home.</span>
             </div>
 
             <div class="cleanup-grid" id="cleanup-grid">
@@ -311,79 +436,169 @@
 
           <!-- Personal messages sub-tab -->
           <div class="style-sub" data-sub="personal" hidden>
-            <div class="style-banner banner-personal">
-              <h2 class="style-banner-title">This style applies in personal messengers</h2>
-              <p class="style-banner-sub">Style formatting only applies in English. More languages coming soon.</p>
-              <div class="banner-apps">
+            <div class="style-caption">
+              <span class="style-caption-text">Applies in personal chat apps · English only</span>
+              <span class="caption-apps">
                 <span class="app-dot" title="WhatsApp">W</span>
                 <span class="app-dot" title="Telegram">T</span>
                 <span class="app-dot" title="Discord">D</span>
                 <span class="app-dot" title="Instagram">IG</span>
-                <span class="app-dot dot-plus">+</span>
-              </div>
+              </span>
             </div>
             <div class="style-card-grid" data-profile="personal"></div>
           </div>
 
           <!-- Work messages sub-tab -->
           <div class="style-sub" data-sub="work" hidden>
-            <div class="style-banner banner-work">
-              <h2 class="style-banner-title">This style applies in workplace messengers</h2>
-              <p class="style-banner-sub">Style formatting only applies in English. More languages coming soon.</p>
-              <div class="banner-apps">
+            <div class="style-caption">
+              <span class="style-caption-text">Applies in work chat apps · English only</span>
+              <span class="caption-apps">
                 <span class="app-dot" title="Slack">S</span>
                 <span class="app-dot" title="Teams">T</span>
                 <span class="app-dot" title="LinkedIn">in</span>
-                <span class="app-dot dot-plus">+</span>
-              </div>
+              </span>
             </div>
             <div class="style-card-grid" data-profile="work"></div>
           </div>
 
           <!-- Email sub-tab -->
           <div class="style-sub" data-sub="email" hidden>
-            <div class="style-banner banner-email">
-              <h2 class="style-banner-title">This style applies in all major email apps</h2>
-              <p class="style-banner-sub">Style formatting only applies in English. More languages coming soon.</p>
-              <div class="banner-apps">
+            <div class="style-caption">
+              <span class="style-caption-text">Applies in email apps · English only</span>
+              <span class="caption-apps">
                 <span class="app-dot" title="Gmail">G</span>
                 <span class="app-dot" title="Spark">S</span>
                 <span class="app-dot" title="Outlook">O</span>
                 <span class="app-dot" title="Mail">M</span>
-                <span class="app-dot dot-plus">+</span>
-              </div>
+              </span>
             </div>
             <div class="style-card-grid" data-profile="email"></div>
           </div>
 
           <!-- Other sub-tab -->
           <div class="style-sub" data-sub="other" hidden>
-            <div class="style-banner banner-other">
-              <h2 class="style-banner-title">This style applies in all other apps</h2>
-              <p class="style-banner-sub">Style formatting only applies in English. More languages coming soon.</p>
-              <div class="banner-apps">
+            <div class="style-caption">
+              <span class="style-caption-text">Applies in all other apps · English only</span>
+              <span class="caption-apps">
                 <span class="app-dot" title="Notes">N</span>
                 <span class="app-dot" title="ChatGPT">AI</span>
                 <span class="app-dot" title="Stickies">S</span>
-                <span class="app-dot dot-plus">+</span>
-              </div>
+              </span>
             </div>
             <div class="style-card-grid" data-profile="other"></div>
           </div>
         </div>
+
+        <div id="dictionary-tab" style="display:none;">
+          <h1 class="hub-page-title">Dictionary</h1>
+          <p class="hub-page-sub">Teach Murmr the words you use so every dictation comes out right.</p>
+
+          <section class="card hub-card">
+            <h3 class="hub-card-title">Vocabulary</h3>
+            <p class="hub-card-sub">Add names, jargon, and acronyms so Murmr spells them right.</p>
+            <div class="hub-add-row">
+              <input id="dict-vocab-input" type="text" placeholder="Add a term — e.g. Tauri, Priya, OKRs" />
+              <button id="dict-vocab-add" class="btn primary" type="button">Add</button>
+            </div>
+            <div id="dict-vocab-chips" class="chip-row hub-chip-list"></div>
+          </section>
+
+          <section class="card hub-card">
+            <h3 class="hub-card-title">Replacements</h3>
+            <p class="hub-card-sub">When Murmr hears the left phrase, it writes the right one instead.</p>
+            <div id="dict-replacements" class="hub-repl-list"></div>
+            <button id="dict-replacement-add" class="btn" type="button">+ Add replacement</button>
+          </section>
+        </div>
+
+        <div id="snippets-tab" style="display:none;">
+          <h1 class="hub-page-title">Snippets</h1>
+          <p class="hub-page-sub">Say the trigger phrase while dictating and Murmr pastes the full snippet.</p>
+
+          <section class="card hub-card">
+            <div id="snippets-list" class="hub-snippet-list"></div>
+            <button id="snippet-add" class="btn primary" type="button">+ New snippet</button>
+          </section>
+        </div>
       </div>
 
-      <aside class="col" id="right-col" style="display:none;">
-        <!-- moved into topbar; kept hidden so existing JS refs don't break -->
-        <div id="stat-words" style="display:none;">0</div>
-        <div id="stat-wpm" style="display:none;">0</div>
-        <div id="stat-streak" style="display:none;">0</div>
-        <div id="profile-status" style="display:none;"></div>
-        <div id="profile-bar" style="display:none;"></div>
-        <div id="profile-info" style="display:none;"></div>
-        <select id="active-mode" style="display:none;"></select>
-        <div id="provider-info" style="display:none;"></div>
-      </aside>
     </main>
+
+    <div id="toast-host" aria-live="polite"></div>
+
+    <div id="onboarding" class="onboarding-overlay" hidden>
+      <div class="onboarding-panel" role="dialog" aria-modal="true" aria-label="Welcome to Murmr">
+        <div class="onboarding-dots" id="onboarding-dots">
+          <span class="dot active"></span><span class="dot"></span><span class="dot"></span>
+        </div>
+
+        <div class="onboarding-step" data-step="0">
+          <h2 class="onboarding-title">Welcome to Murmr</h2>
+          <p class="onboarding-sub">Speak anywhere your cursor goes. Two minutes of setup and you're dictating.</p>
+          <div class="onboarding-perms">
+            <div class="perm-row">
+              <div class="perm-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v4a4 4 0 0 0 4 4Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+              </div>
+              <div>
+                <div class="perm-name">Microphone</div>
+                <div class="perm-why">So Murmr can hear you. Audio is transcribed locally by default — nothing leaves your machine.</div>
+              </div>
+            </div>
+            <div class="perm-row" id="onboarding-perm-ax">
+              <div class="perm-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="8" r="1.5"/><path d="M7 10.5l3.5 1v3L9 19m6 0-1.5-4.5v-3l3.5-1"/></svg>
+              </div>
+              <div>
+                <div class="perm-name">Accessibility <span class="perm-os">(macOS)</span></div>
+                <div class="perm-why">Lets Murmr type the transcript into whatever app you're using. Grant it in System Settings → Privacy &amp; Security → Accessibility.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="onboarding-step" data-step="1" hidden>
+          <h2 class="onboarding-title">Try it</h2>
+          <p class="onboarding-sub">Hold the hotkey, say a sentence, then release.</p>
+          <div class="onboarding-hotkey" id="onboarding-hotkey">
+            <span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">Space</span>
+          </div>
+          <div class="onboarding-try-steps">
+            <span>Hold</span><span class="arrow">→</span><span>Speak</span><span class="arrow">→</span><span>Release</span>
+          </div>
+          <div class="onboarding-try-status" id="onboarding-try-status">Waiting for your first dictation…</div>
+          <a class="onboarding-skip" id="onboarding-skip-try">Skip this step</a>
+        </div>
+
+        <div class="onboarding-step" data-step="2" hidden>
+          <h2 class="onboarding-title">Pick your cleanup level</h2>
+          <p class="onboarding-sub">How much polish should Murmr apply to what you say? You can change this anytime in Style.</p>
+          <div class="onboarding-cleanup" id="onboarding-cleanup">
+            <button class="ob-cleanup-card" data-level="none" type="button">
+              <span class="ob-cleanup-name">None</span>
+              <span class="ob-cleanup-desc">Transcribes exactly what you said, including mistakes</span>
+            </button>
+            <button class="ob-cleanup-card active" data-level="light" type="button">
+              <span class="ob-cleanup-name">Light</span>
+              <span class="ob-cleanup-desc">Cleans up filler words and grammar</span>
+            </button>
+            <button class="ob-cleanup-card" data-level="medium" type="button">
+              <span class="ob-cleanup-name">Medium</span>
+              <span class="ob-cleanup-desc">Edits for clarity and conciseness</span>
+            </button>
+            <button class="ob-cleanup-card" data-level="high" type="button">
+              <span class="ob-cleanup-name">High</span>
+              <span class="ob-cleanup-desc">Rewrites for brevity and polish</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="onboarding-footer">
+          <button class="btn" id="onboarding-back" type="button" hidden>Back</button>
+          <div class="spacer"></div>
+          <button class="btn primary" id="onboarding-next" type="button">Next</button>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

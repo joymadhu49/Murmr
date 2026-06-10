@@ -1,0 +1,352 @@
+/* compact.css — global density pass + Style page compaction. Loaded after wispr.css/hub.css. */
+
+/* =========================================================================
+   1. GLOBAL DENSITY
+   ========================================================================= */
+
+/* Layout: narrower sidebar, slimmer topbar (40px) */
+body.with-sidebar {
+  grid-template-columns: 180px minmax(0, 1fr) !important;
+  padding-top: 40px !important;
+}
+.topbar {
+  height: 40px !important;
+}
+.sidebar {
+  top: 40px !important;
+  height: calc(100vh - 40px) !important;
+  padding: 10px 8px 10px 8px !important;
+}
+.main {
+  height: calc(100vh - 40px);
+}
+
+/* Main content padding 28px -> 16px */
+.main > .col {
+  padding: 16px max(16px, calc((100% - 1100px) / 2)) !important;
+  min-height: calc(100vh - 40px);
+}
+
+/* Sidebar brand + nav tighter */
+.sidebar-brand {
+  padding: 2px 6px 8px 6px;
+}
+.sidebar-brand .brand-name {
+  font-size: 14px;
+}
+.sidebar-brand .brand-mark {
+  width: 24px;
+  height: 24px;
+}
+.sidebar .nav-btn {
+  height: 29px !important;
+  padding: 0 8px !important;
+  font-size: 12.5px !important;
+  gap: 8px !important;
+}
+.sidebar .nav-btn svg {
+  width: 15px !important;
+  height: 15px !important;
+}
+
+/* Topbar chips smaller */
+.topbar-stats .chip {
+  padding: 3px 9px;
+  font-size: 11px;
+  gap: 4px;
+}
+.topbar-btn {
+  width: 28px;
+  height: 28px;
+}
+
+/* Cards: padding down ~25% */
+.card {
+  padding: 14px !important;
+  border-radius: 10px !important;
+}
+.card h3 {
+  margin-bottom: 10px !important;
+}
+.hub-card {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.hub-card-title {
+  font-size: 15px;
+}
+.hub-card-sub {
+  font-size: 12px;
+  margin: 0 0 10px;
+}
+
+/* Page titles: one treatment on every tab — Georgia serif, 18px, weight 500,
+   left-aligned, ~12px below. (Settings' sp-page-title keeps margin:0 from
+   settings-pro.css since its .sp-head supplies the spacing.) */
+.hub-page-title,
+.style-page-title,
+#profile-tab .vp-title,
+#settings-tab .sp-page-title {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+  text-align: left;
+  color: var(--text);
+  margin: 0 0 12px;
+}
+.hub-page-sub {
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+.welcome-title {
+  font-size: 18px;
+}
+.welcome-header {
+  margin-bottom: 12px;
+}
+#profile-tab .vp-header {
+  padding: 4px 0 12px;
+}
+
+/* Hero card on Home: noticeably less vertical padding */
+.hero-card {
+  padding: 14px 18px;
+  border-radius: 12px;
+}
+.hero-card h2 {
+  font-size: 17px;
+  margin-bottom: 4px;
+}
+.hero-card p {
+  font-size: 12px;
+}
+.hero-card .actions {
+  margin-top: 10px;
+  gap: 10px;
+}
+.hero-card .pill-btn {
+  padding: 8px 18px !important; /* beat wispr.css's 9px 18px !important */
+  min-width: 0;
+}
+
+/* History rows tighter */
+.history-toolbar {
+  margin: 12px 0 8px;
+}
+.history-row {
+  padding: 8px 14px;
+  gap: 12px;
+  grid-template-columns: 80px minmax(0, 1fr) auto;
+}
+.history-row.flagged {
+  padding-left: 11px;
+}
+.history-row .time {
+  font-size: 11px;
+  padding-top: 2px;
+}
+.history-row .text {
+  font-size: 13px;
+  line-height: 1.5;
+  /* Clamp huge transcripts to ~6 lines so one row can't blow up the list */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+}
+
+/* Empty states: one treatment (styles.css / wispr.css / polish-history.css /
+   hub.css each had their own padding & radius) */
+.empty,
+.hub-empty {
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--panel-2);
+  border: 1px dashed var(--border-strong);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Keyboard-focus ring on form fields (wispr.css kills outlines with
+   `outline: none !important`). Settings fields are excluded — settings-pro.css
+   already shows a border+shadow ring there; avoid a double ring. */
+input:not(#settings-tab *):focus-visible,
+select:not(#settings-tab *):focus-visible,
+textarea:not(#settings-tab *):focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 1px;
+}
+
+/* Secondary / meta text 12px */
+.muted.small,
+.small {
+  font-size: 12px;
+}
+
+/* =========================================================================
+   2. STYLE PAGE
+   ========================================================================= */
+
+#style-tab {
+  padding: 0 0 16px;
+}
+
+/* Heading: handled by the consolidated page-title block in section 1 */
+
+/* Sub-tab pills: smaller */
+.style-tabs {
+  margin-bottom: 10px;
+}
+.style-tab-btn {
+  padding: 6px 10px 8px;
+  font-size: 12px;
+}
+.beta-pill {
+  font-size: 9px;
+  padding: 1px 5px;
+}
+
+/* Slim caption row replaces the big dark banner */
+.style-caption {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 24px;
+  margin: 0 0 12px;
+}
+.style-caption-text {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.caption-apps {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* App dots: small, light-theme chips (no longer on a dark banner) */
+.style-caption .app-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  border: 1px solid var(--border);
+  color: var(--accent-pill-text);
+  font-size: 8px;
+  font-weight: 700;
+  backdrop-filter: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Style variant cards: compact (title + one-line desc + one preview line) */
+.style-card-grid {
+  gap: 10px;
+  margin: 0;
+}
+.style-card {
+  min-height: 0;
+  max-height: 110px;
+  overflow: hidden;
+  padding: 12px 14px;
+  gap: 1px;
+  border-radius: 10px;
+}
+.style-card-title {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.style-card-sub {
+  font-size: 11.5px;
+  margin: 0 0 6px;
+}
+.style-card-preview {
+  margin-top: 0;
+  flex: none;
+  display: block;
+}
+.style-card-line {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+/* Auto Cleanup cards: same treatment */
+.cleanup-grid {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.cleanup-card {
+  min-height: 0;
+  max-height: 110px;
+  overflow: hidden;
+  padding: 12px 14px;
+  border-radius: 10px;
+}
+.cleanup-card-name {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.cleanup-card-desc {
+  font-size: 11.5px;
+  margin-bottom: 6px;
+  line-height: 1.35;
+}
+.cleanup-card-preview {
+  margin-top: 0;
+  padding: 0;
+  background: transparent !important;
+  font-size: 11.5px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.style-requires-groq {
+  font-size: 11.5px;
+  margin: 8px 0 0;
+  padding: 7px 10px;
+}
+
+/* In the ~1000px default window the 4-up cleanup grid gets cramped; 2x2 fits.
+   Style cards drop to one per row a bit later since they're 3-up. */
+@media (max-width: 1100px) {
+  .cleanup-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 900px) {
+  .style-card-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .style-card {
+    max-height: 130px;
+  }
+}
+@media (max-width: 760px) {
+  .style-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Preserve wispr.css's icon-only sidebar at very narrow widths (our
+   unconditional 180px !important above would otherwise win the cascade). */
+@media (max-width: 720px) {
+  body.with-sidebar {
+    grid-template-columns: 56px minmax(0, 1fr) !important;
+  }
+}
