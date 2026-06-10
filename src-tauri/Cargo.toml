@@ -32,6 +32,9 @@ base64 = "0.22"
 evdev = "0.12"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# Native NSVisualEffectView frosted glass for the HUD pill (CSS backdrop-filter
+# can't blur the desktop behind a transparent window).
+window-vibrancy = "0.6"
 core-graphics = "0.23"
 core-foundation = "0.9"
 libc = "0.2"

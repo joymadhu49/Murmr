@@ -105,6 +105,14 @@ struct Snippet {
     expansion: String,
 }
 
+/// A dictionary rule: every recognized `from` is rewritten to `to` in the final text
+/// (case-insensitive, word-boundary-aware). Wispr-Flow-style personal dictionary.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+struct Replacement {
+    from: String,
+    to: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct StyleProfile {
     #[serde(default = "default_style_variant")]
@@ -174,6 +182,12 @@ struct AppSettings {
     transcription_provider: String, // "local" | "cloud"
     #[serde(default = "default_cloud_stt_model")]
     cloud_stt_model: String, // OpenRouter audio-capable model used for cloud transcription
+    #[serde(default)]
+    replacements: Vec<Replacement>, // personal dictionary: always rewrite `from` -> `to`
+    #[serde(default = "default_true")]
+    spoken_punctuation: bool, // deterministic "period"/"new line" parsing, no LLM needed
+    #[serde(default = "default_true")]
+    play_sounds: bool, // audible feedback on record start / paste / error
 }
 
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -244,6 +258,9 @@ impl Default for AppSettings {
             input_device: String::new(),
             transcription_provider: default_transcription_provider(),
             cloud_stt_model: default_cloud_stt_model(),
+            replacements: Vec::new(),
+            spoken_punctuation: true,
+            play_sounds: true,
         }
     }
 }
@@ -285,6 +302,9 @@ struct Session {
     handle: Option<thread::JoinHandle<()>>,
     live_handle: Option<thread::JoinHandle<()>>,
     started_at: Instant,
+    // The capture thread/cpal callbacks have no AppHandle, so they park failures here and
+    // stop_inner reports them instead of a vague "no speech detected".
+    audio_error: Arc<Mutex<Option<String>>>,
 }
 
 #[derive(Default)]
@@ -294,6 +314,9 @@ struct AppState {
     settings: Mutex<AppSettings>,
     hotkey_held: AtomicBool,
     hotkey_release_seq: std::sync::atomic::AtomicU64,
+    // Cached voice-profile prompt: (history mtime, settings-derived key, built prompt).
+    // Building it scans all of history.jsonl, far too slow to redo on every dictation.
+    voice_prompt_cache: Mutex<Option<(u64, String, String)>>,
 }
 
 fn data_dir() -> Result<PathBuf> {
@@ -465,10 +488,46 @@ fn mode_pack(settings: &AppSettings) -> String {
     String::new()
 }
 
-fn voice_profile_prompt(settings: &AppSettings) -> String {
+/// Modification time of history.jsonl as nanos-since-epoch, 0 if absent. Cheap cache key: every
+/// history mutation (append/edit/delete/clear) rewrites the file, bumping the mtime.
+fn history_mtime() -> u64 {
+    history_path()
+        .ok()
+        .and_then(|p| fs::metadata(p).ok())
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0)
+}
+
+fn voice_profile_prompt(settings: &AppSettings, state: &AppState) -> String {
+    let pack = mode_pack(settings);
+
+    // Cache hit? Keyed by history mtime plus every settings input the prompt depends on, so a
+    // vocab/mode/dictionary edit or any history change rebuilds, and everything else reuses.
+    let cache_key = format!(
+        "{}\u{1f}{}\u{1f}{}",
+        pack,
+        settings.custom_vocab,
+        settings
+            .replacements
+            .iter()
+            .map(|r| r.from.as_str())
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    let mtime = history_mtime();
+    {
+        let cache = state.voice_prompt_cache.lock().unwrap();
+        if let Some((m, k, p)) = cache.as_ref() {
+            if *m == mtime && *k == cache_key {
+                return p.clone();
+            }
+        }
+    }
+
     let mut out = String::new();
 
-    let pack = mode_pack(settings);
     if !pack.is_empty() {
         if out.len() + pack.len() + 1 <= PROMPT_BUDGET {
             out.push_str(&pack);
@@ -478,12 +537,20 @@ fn voice_profile_prompt(settings: &AppSettings) -> String {
         }
     }
 
-    let custom: Vec<String> = settings
+    let mut custom: Vec<String> = settings
         .custom_vocab
         .lines()
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
         .collect();
+    // Dictionary `from` terms are words the user expects to say — bias the recognizer toward
+    // them so the replacement rule actually gets a chance to fire.
+    for r in &settings.replacements {
+        let f = r.from.trim();
+        if !f.is_empty() {
+            custom.push(f.to_string());
+        }
+    }
     if !custom.is_empty() {
         let prefix = "Vocabulary: ";
         if out.len() + prefix.len() + 4 <= PROMPT_BUDGET {
@@ -608,7 +675,9 @@ fn voice_profile_prompt(settings: &AppSettings) -> String {
         }
     }
 
-    out.trim().to_string()
+    let prompt = out.trim().to_string();
+    *state.voice_prompt_cache.lock().unwrap() = Some((mtime, cache_key, prompt.clone()));
+    prompt
 }
 
 /// Phrases Whisper hallucinates on silence/low-energy audio because its training data is dominated
@@ -809,7 +878,7 @@ fn get_stats(state: State<'_, AppState>) -> serde_json::Value {
         "wpm": wpm,
         "streak": compute_streak(&items),
         "sessions": items.len(),
-        "voice_profile_size": voice_profile_prompt(&settings).len(),
+        "voice_profile_size": voice_profile_prompt(&settings, &state).len(),
     })
 }
 
@@ -915,6 +984,9 @@ async fn set_active_model(
         let mut w = state.whisper.lock().unwrap();
         *w = None;
     }
+    // Warm the new model's context in the background so the next dictation doesn't pay the
+    // multi-second load on the hot path.
+    preload_whisper_async(app.clone());
     let _ = app.emit("settings-changed", &new);
     Ok(new)
 }
@@ -1043,16 +1115,18 @@ fn preload_whisper_async(app: AppHandle) {
 
 fn ensure_active_model(state: &AppState) -> Result<(PathBuf, String)> {
     let id = state.settings.lock().unwrap().active_model.clone();
-    let info = find_model(&id).ok_or_else(|| anyhow!("unknown model: {}", id))?;
+    if find_model(&id).is_none() {
+        return Err(anyhow!("unknown model: {}", id));
+    }
     let p = model_file(&id)?;
+    // Never download here: this runs inside the dictation pipeline, and a blocking
+    // multi-hundred-MB fetch would freeze the hotkey for minutes. Downloads happen only via the
+    // async `download_model` command.
     if !model_exists(&id) {
-        let resp = ureq::get(info.url).call()?;
-        let mut reader = resp.into_reader();
-        let tmp = p.with_extension("part");
-        let mut file = fs::File::create(&tmp)?;
-        std::io::copy(&mut reader, &mut file)?;
-        drop(file);
-        fs::rename(&tmp, &p)?;
+        return Err(anyhow!(
+            "Model not downloaded — open Settings → Local models to download \"{}\"",
+            id
+        ));
     }
     Ok((p, id))
 }
@@ -1094,6 +1168,55 @@ fn list_input_devices() -> Vec<String> {
     names
 }
 
+/// Fire-and-forget UI feedback sound (Wispr-style "ping"): `kind` is "start", "done", or "error".
+/// Spawns the platform player and never blocks or surfaces failures — sound is garnish, not
+/// load-bearing. A detached thread reaps the child so we don't accumulate zombies.
+fn play_feedback_sound(kind: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let file = match kind {
+            "start" => "/System/Library/Sounds/Pop.aiff",
+            "done" => "/System/Library/Sounds/Tink.aiff",
+            _ => "/System/Library/Sounds/Basso.aiff",
+        };
+        if let Ok(mut child) = std::process::Command::new("afplay").arg(file).spawn() {
+            thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let (file, event) = match kind {
+            "start" => (
+                "/usr/share/sounds/freedesktop/stereo/dialog-information.oga",
+                "dialog-information",
+            ),
+            "done" => ("/usr/share/sounds/freedesktop/stereo/complete.oga", "complete"),
+            _ => ("/usr/share/sounds/freedesktop/stereo/dialog-error.oga", "dialog-error"),
+        };
+        // Prefer paplay with the freedesktop theme; fall back to canberra; else silently skip.
+        let child = if std::path::Path::new(file).exists() {
+            std::process::Command::new("paplay").arg(file).spawn().ok()
+        } else {
+            None
+        }
+        .or_else(|| {
+            std::process::Command::new("canberra-gtk-play")
+                .args(["-i", event])
+                .spawn()
+                .ok()
+        });
+        if let Some(mut child) = child {
+            thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    let _ = kind;
+}
+
 fn start_inner(app: &AppHandle, state: &AppState) -> Result<(), String> {
     let mut sess = state.session.lock().unwrap();
     if sess.is_some() {
@@ -1108,28 +1231,50 @@ fn start_inner(app: &AppHandle, state: &AppState) -> Result<(), String> {
     let samples_t = samples.clone();
     let sr_t = sr.clone();
     let ch_t = ch.clone();
-    let device_name = state.settings.lock().unwrap().input_device.clone();
+    let (device_name, play_sounds) = {
+        let s = state.settings.lock().unwrap();
+        (s.input_device.clone(), s.play_sounds)
+    };
+    let audio_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let err_t = audio_error.clone();
 
     let handle = thread::spawn(move || {
+        let report = |msg: String| {
+            eprintln!("audio err: {}", msg);
+            *err_t.lock().unwrap() = Some(msg);
+        };
         let dev = match pick_input_device(&device_name) {
             Some(d) => d,
-            None => return,
+            None => {
+                report("no input device found — check your microphone".into());
+                return;
+            }
         };
         let cfg = match dev.default_input_config() {
             Ok(c) => c,
-            Err(_) => return,
+            Err(e) => {
+                report(format!("could not read microphone config: {}", e));
+                return;
+            }
         };
         *sr_t.lock().unwrap() = cfg.sample_rate().0;
         *ch_t.lock().unwrap() = cfg.channels();
         let fmt = cfg.sample_format();
         let cfg2: cpal::StreamConfig = cfg.into();
         let s2 = samples_t.clone();
-        let err_fn = |e| eprintln!("audio err: {}", e);
+        // One error-callback clone per stream variant — only one arm is built, but each needs
+        // its own owned handle to the shared error slot.
+        let err_a = err_t.clone();
+        let err_b = err_t.clone();
+        let err_c = err_t.clone();
         let stream = match fmt {
             SampleFormat::F32 => dev.build_input_stream(
                 &cfg2,
                 move |data: &[f32], _: &_| s2.lock().unwrap().extend_from_slice(data),
-                err_fn,
+                move |e| {
+                    eprintln!("audio err: {}", e);
+                    *err_a.lock().unwrap() = Some(format!("audio stream error: {}", e));
+                },
                 None,
             ),
             SampleFormat::I16 => dev.build_input_stream(
@@ -1138,7 +1283,10 @@ fn start_inner(app: &AppHandle, state: &AppState) -> Result<(), String> {
                     let mut g = s2.lock().unwrap();
                     g.extend(data.iter().map(|&v| v as f32 / 32768.0));
                 },
-                err_fn,
+                move |e| {
+                    eprintln!("audio err: {}", e);
+                    *err_b.lock().unwrap() = Some(format!("audio stream error: {}", e));
+                },
                 None,
             ),
             SampleFormat::U16 => dev.build_input_stream(
@@ -1147,16 +1295,26 @@ fn start_inner(app: &AppHandle, state: &AppState) -> Result<(), String> {
                     let mut g = s2.lock().unwrap();
                     g.extend(data.iter().map(|&v| (v as f32 - 32768.0) / 32768.0));
                 },
-                err_fn,
+                move |e| {
+                    eprintln!("audio err: {}", e);
+                    *err_c.lock().unwrap() = Some(format!("audio stream error: {}", e));
+                },
                 None,
             ),
-            _ => return,
+            _ => {
+                report("unsupported microphone sample format".into());
+                return;
+            }
         };
         let stream = match stream {
             Ok(s) => s,
-            Err(_) => return,
+            Err(e) => {
+                report(format!("could not open microphone: {}", e));
+                return;
+            }
         };
-        if stream.play().is_err() {
+        if let Err(e) = stream.play() {
+            report(format!("could not start microphone: {}", e));
             return;
         }
         while !stop_t.load(Ordering::Relaxed) {
@@ -1187,7 +1345,11 @@ fn start_inner(app: &AppHandle, state: &AppState) -> Result<(), String> {
         handle: Some(handle),
         live_handle,
         started_at: Instant::now(),
+        audio_error,
     });
+    if play_sounds {
+        play_feedback_sound("start");
+    }
     Ok(())
 }
 
@@ -1764,7 +1926,7 @@ fn local_transcribe(
     Ok((out.trim().to_string(), model_id))
 }
 
-fn stop_inner(state: &AppState) -> Result<(Delivery, u64, String, String), String> {
+fn stop_inner(app: &AppHandle, state: &AppState) -> Result<(Delivery, u64, String, String), String> {
     let sess = {
         let mut g = state.session.lock().unwrap();
         g.take()
@@ -1781,9 +1943,16 @@ fn stop_inner(state: &AppState) -> Result<(Delivery, u64, String, String), Strin
     let raw = sess.samples.lock().unwrap().clone();
     let sr = *sess.sample_rate.lock().unwrap();
     let ch = *sess.channels.lock().unwrap();
+    let audio_err = sess.audio_error.lock().unwrap().clone();
     let duration_ms = sess.started_at.elapsed().as_millis() as u64;
-    if duration_ms < 150 || raw.is_empty() {
-        return Err("too short".into());
+    if raw.is_empty() {
+        // Nothing captured: surface the capture thread's failure if it logged one.
+        return Err(audio_err.map(|e| format!("Microphone error: {}", e)).unwrap_or_else(|| {
+            "No audio captured — check your microphone connection and permissions".into()
+        }));
+    }
+    if duration_ms < 150 {
+        return Err("Recording too short — hold the hotkey while you speak".into());
     }
     let mut pcm = to_mono_16k(&raw, sr, ch);
     remove_dc(&mut pcm);
@@ -1793,7 +1962,10 @@ fn stop_inner(state: &AppState) -> Result<(Delivery, u64, String, String), Strin
     // Require ≥ 250 ms of post-VAD audio. Anything shorter is almost always silence + noise,
     // which Whisper turns into "thanks for watching" / "you" hallucinations.
     if pcm.len() < 16000 / 4 {
-        return Err("no speech detected".into());
+        return Err(
+            "Only silence detected — try speaking louder or moving closer to the microphone"
+                .into(),
+        );
     }
 
     let (language, mut settings_clone) = {
@@ -1803,15 +1975,20 @@ fn stop_inner(state: &AppState) -> Result<(Delivery, u64, String, String), Strin
     // App-aware mode: pick the mode from the focused app before building prompts.
     settings_clone.active_mode = effective_mode(&settings_clone);
 
-    let voice_prompt = voice_profile_prompt(&settings_clone);
+    let voice_prompt = voice_profile_prompt(&settings_clone, state);
 
-    // Cloud STT (if opted in + key set), else local. Cloud failures fall back to local.
+    // Cloud STT (if opted in + key set), else local. Cloud failures fall back to local — and we
+    // tell the user via `provider-fallback`, since silently degrading accuracy erodes trust.
     let (raw_text, provider_label, model_label, used_cloud) =
         if want_cloud_transcription(&settings_clone) {
             match cloud_transcribe(&pcm, &settings_clone, &language) {
                 Ok(t) => (t, "cloud".into(), settings_clone.cloud_stt_model.clone(), true),
                 Err(e) => {
                     eprintln!("cloud STT failed ({e}); falling back to local");
+                    let _ = app.emit(
+                        "provider-fallback",
+                        format!("Cloud transcription failed ({}) — used local model", e),
+                    );
                     let (t, id) = local_transcribe(state, &pcm, &language, &voice_prompt)?;
                     (t, "local".into(), id, false)
                 }
@@ -1828,13 +2005,22 @@ fn stop_inner(state: &AppState) -> Result<(Delivery, u64, String, String), Strin
             return Ok((Delivery::Command(cmd), duration_ms, provider_label, model_label));
         }
     }
+    // Deterministic spoken-punctuation pass. Runs before any LLM step, so "period" / "new line"
+    // work even with cleanup off (the default) — the LLM clause alone silently ignored them.
+    let cleaned = if settings_clone.spoken_punctuation {
+        apply_spoken_punctuation(&cleaned)
+    } else {
+        cleaned
+    };
     // Cloud STT output is already clean — skip the LLM polish (it's a crutch for local models).
     let formatted = if used_cloud {
         cleaned
     } else {
         maybe_smart_format(&cleaned, &settings_clone)
     };
-    let expanded = expand_snippets(&formatted, &settings_clone.snippets);
+    // Personal dictionary after formatting, so LLM edits can't undo the user's rules.
+    let replaced = apply_replacements(&formatted, &settings_clone.replacements);
+    let expanded = expand_snippets(&replaced, &settings_clone.snippets);
     Ok((Delivery::Text(expanded), duration_ms, provider_label, model_label))
 }
 
@@ -2019,7 +2205,7 @@ fn list_builtin_modes() -> Vec<serde_json::Value> {
 #[tauri::command]
 fn preview_voice_prompt(state: State<'_, AppState>) -> String {
     let s = state.settings.lock().unwrap().clone();
-    voice_profile_prompt(&s)
+    voice_profile_prompt(&s, &state)
 }
 
 #[tauri::command]
@@ -2245,6 +2431,111 @@ fn emit_command(cmd: VoiceCommand) {
 #[cfg(not(target_os = "macos"))]
 fn emit_command(_cmd: VoiceCommand) {}
 
+/// Deterministically convert spoken punctuation / layout commands ("period", "new line", …) into
+/// the actual marks. Token-stream pass, conservative by design: a command only fires when its
+/// word(s) stand alone between whitespace, and marks attach to the previous word (no space
+/// before, space after). Runs on every dictation regardless of cleanup level.
+fn apply_spoken_punctuation(text: &str) -> String {
+    /// What a recognized spoken command expands to.
+    enum Tok {
+        Punct(&'static str), // attaches to the previous word: "period" -> "."
+        Break(&'static str), // line break(s): the next word starts a new line
+        OpenQuote,           // attaches to the NEXT word
+        CloseQuote,          // attaches to the previous word
+    }
+    // Strip the punctuation Whisper itself adds around the keyword ("Period." -> "period").
+    fn norm(w: &str) -> String {
+        w.trim_matches(|c: char| matches!(c, '.' | ',' | '!' | '?' | ';' | ':'))
+            .to_lowercase()
+    }
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut glue = false; // suppress the space before the next word (after a break / open quote)
+    let mut i = 0usize;
+    while i < words.len() {
+        let w1 = norm(words[i]);
+        let w2 = words.get(i + 1).map(|w| norm(w));
+        // Two-word commands first so "new line" never half-matches as a single word.
+        let (tok, used) = match (w1.as_str(), w2.as_deref()) {
+            ("question", Some("mark")) => (Some(Tok::Punct("?")), 2),
+            ("exclamation", Some("point")) | ("exclamation", Some("mark")) => {
+                (Some(Tok::Punct("!")), 2)
+            }
+            ("full", Some("stop")) => (Some(Tok::Punct(".")), 2),
+            ("new", Some("line")) | ("next", Some("line")) => (Some(Tok::Break("\n")), 2),
+            ("new", Some("paragraph")) => (Some(Tok::Break("\n\n")), 2),
+            ("open", Some("quote")) | ("open", Some("quotes")) => (Some(Tok::OpenQuote), 2),
+            ("close", Some("quote")) | ("close", Some("quotes")) | ("end", Some("quote")) => {
+                (Some(Tok::CloseQuote), 2)
+            }
+            ("period", _) => (Some(Tok::Punct(".")), 1),
+            ("comma", _) => (Some(Tok::Punct(",")), 1),
+            ("colon", _) => (Some(Tok::Punct(":")), 1),
+            ("semicolon", _) => (Some(Tok::Punct(";")), 1),
+            _ => (None, 1),
+        };
+        match tok {
+            // A mark needs a previous word to attach to — otherwise keep the literal word.
+            Some(Tok::Punct(p)) if out.ends_with(|c: char| !c.is_whitespace()) => {
+                if !out.ends_with(p) {
+                    // Whisper often writes its own separator before the spoken mark
+                    // ("world, period") — drop it so we don't emit "world,.".
+                    while out.ends_with(|c: char| matches!(c, ',' | ';' | ':')) {
+                        out.pop();
+                    }
+                    out.push_str(p); // don't double up if Whisper already wrote the mark
+                }
+                i += used;
+                continue;
+            }
+            Some(Tok::Break(b)) if !out.is_empty() => {
+                out.push_str(b);
+                glue = true;
+                i += used;
+                continue;
+            }
+            // An opening quote needs a following word to wrap.
+            Some(Tok::OpenQuote) if i + used < words.len() => {
+                if !out.is_empty() && !glue {
+                    out.push(' ');
+                }
+                out.push('"');
+                glue = true;
+                i += used;
+                continue;
+            }
+            Some(Tok::CloseQuote) if out.ends_with(|c: char| !c.is_whitespace()) => {
+                out.push('"');
+                i += used;
+                continue;
+            }
+            _ => {}
+        }
+        // Ordinary word — copy through verbatim.
+        if !out.is_empty() && !glue {
+            out.push(' ');
+        }
+        glue = false;
+        out.push_str(words[i]);
+        i += 1;
+    }
+    out
+}
+
+/// Apply the personal dictionary: rewrite every `from` to `to`, case-insensitively on word
+/// boundaries (same matching as snippets).
+fn apply_replacements(text: &str, rules: &[Replacement]) -> String {
+    let mut out = text.to_string();
+    for r in rules {
+        let from = r.from.trim();
+        if from.is_empty() {
+            continue;
+        }
+        out = replace_phrase_ci(&out, from, &r.to);
+    }
+    out
+}
+
 /// Replace any snippet trigger phrases found in `text` with their expansions.
 /// Case-insensitive, bounded by non-alphanumeric edges so "sig" won't match inside "signal".
 fn expand_snippets(text: &str, snippets: &[Snippet]) -> String {
@@ -2300,8 +2591,8 @@ fn position_hud(app: &AppHandle) {
             let pos = monitor.position();
             let size = monitor.size();
             let scale = monitor.scale_factor();
-            let win_w = (420.0 * scale) as i32;
-            let win_h = (110.0 * scale) as i32;
+            let win_w = (264.0 * scale) as i32;
+            let win_h = (38.0 * scale) as i32;
             let x = pos.x + (size.width as i32 - win_w) / 2;
             let y = pos.y + size.height as i32 - win_h - (80.0 * scale) as i32;
             let _ = win.set_position(PhysicalPosition::new(x, y));
@@ -2351,6 +2642,7 @@ fn finish_dictation(
     model: String,
     auto_paste: bool,
 ) -> String {
+    let play_sounds = app.state::<AppState>().settings.lock().unwrap().play_sounds;
     match delivery {
         Delivery::Text(text) => {
             record_history(&text, dur, &provider, &model);
@@ -2364,6 +2656,9 @@ fn finish_dictation(
                 // lost focus — no need to wait for it to "return". Tiny settle only.
                 thread::sleep(Duration::from_millis(60));
                 deliver_text(&t, auto_paste);
+                if play_sounds {
+                    play_feedback_sound("done");
+                }
                 thread::sleep(Duration::from_millis(350)); // keep "Pasted" visible briefly
                 hide_hud(&app2);
             });
@@ -2388,13 +2683,19 @@ fn finish_dictation(
 #[tauri::command]
 async fn stop_recording(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
     let _ = app.emit("rec-state", "transcribing");
-    let auto_paste = state.settings.lock().unwrap().auto_paste;
-    let res = stop_inner(&state);
+    let (auto_paste, play_sounds) = {
+        let s = state.settings.lock().unwrap();
+        (s.auto_paste, s.play_sounds)
+    };
+    let res = stop_inner(&app, &state);
     match res {
         Ok((delivery, dur, provider, model)) => {
             Ok(finish_dictation(&app, delivery, dur, provider, model, auto_paste))
         }
         Err(e) => {
+            if play_sounds {
+                play_feedback_sound("error");
+            }
             let _ = app.emit("rec-error", &e);
             let _ = app.emit("rec-state", "idle");
             let app2 = app.clone();
@@ -2520,12 +2821,18 @@ fn is_wayland() -> bool {
 
 fn do_stop(app: &AppHandle, state: &AppState) {
     let _ = app.emit("rec-state", "transcribing");
-    let auto_paste = state.settings.lock().unwrap().auto_paste;
-    match stop_inner(state) {
+    let (auto_paste, play_sounds) = {
+        let s = state.settings.lock().unwrap();
+        (s.auto_paste, s.play_sounds)
+    };
+    match stop_inner(app, state) {
         Ok((delivery, dur, provider, model)) => {
             finish_dictation(app, delivery, dur, provider, model, auto_paste);
         }
         Err(e) => {
+            if play_sounds {
+                play_feedback_sound("error");
+            }
             let _ = app.emit("rec-error", &e);
             let _ = app.emit("rec-state", "idle");
             let app2 = app.clone();
@@ -3091,6 +3398,20 @@ pub fn run() {
                 }
             }
             if let Some(hud) = app.get_webview_window("hud") {
+                // Apple-glass HUD: the pill fills the whole window, so a rounded
+                // NSVisualEffectView behind it reads as a frosted translucent pill.
+                #[cfg(target_os = "macos")]
+                {
+                    use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+                    if let Err(e) = apply_vibrancy(
+                        &hud,
+                        NSVisualEffectMaterial::HudWindow,
+                        Some(NSVisualEffectState::Active),
+                        Some(19.0), // radius = window height / 2 -> capsule shape
+                    ) {
+                        eprintln!("hud vibrancy failed: {e}");
+                    }
+                }
                 let _ = hud.hide();
             }
             // Evdev-based global hotkey — works on Wayland regardless of compositor

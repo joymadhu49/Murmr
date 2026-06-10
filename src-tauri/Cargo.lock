@@ -2517,6 +2517,7 @@ dependencies = [
  "tauri-plugin-opener",
  "ureq",
  "whisper-rs",
+ "window-vibrancy",
 ]
 
 [[package]]

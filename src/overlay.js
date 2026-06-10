@@ -13,9 +13,14 @@ function setState(s) {
   hud.dataset.state = s;
 }
 
+// macOS gets native vibrancy behind the window; CSS only tints it there.
+if (navigator.userAgent.includes("Mac")) document.body.classList.add("mac");
+
 setState("idle");
 
-// Show the user's actual hotkey in the idle pill if they set one.
+// Show the user's actual hotkey in the idle pill — custom combo if set,
+// otherwise the platform default (hold Right Option on macOS).
+if (navigator.userAgent.includes("Mac")) idleKbd.textContent = "Right ⌥ Option (hold)";
 (async () => {
   try {
     const s = await invoke("get_settings");
